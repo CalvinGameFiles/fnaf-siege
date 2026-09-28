@@ -34,7 +34,7 @@ One player taps **Play > Local > Host a game**, and the other sees it in the lis
 | `server.js` | the PC launcher's tiny web server |
 | `scripts/make-heads.py` | crops the pasted pictures into `www/img` and measures the eyes for blinking |
 | `desktop/` | the Windows app (Electron): `main.js`, `build.js` |
-| `debug/*.py` | automated tests (headless Chrome): `smoke`, `mech`, `online`, `levels`, `fighters`, `round6`, `round7`, `round8`, `round9`, `round10`, `round11` (tied ropes), `mobile` (phone sizes + finger gestures), `desktop` |
+| `debug/*.py` | automated tests (headless Chrome): `smoke`, `mech`, `online`, `levels`, `fighters`, `round6`, `round7`, `round8`, `round9`, `round10`, `round11` (tied ropes), `round12` (cannon effects, team colours, coins), `mobile` (phone sizes + finger gestures), `desktop` |
 
 ## Rules (short)
 - Map is 75x50. Blue land = columns 1-25, battlefield = 26-50, red land = 51-75. You can only build on your own colour. Each side's cannon sits behind its land on a low platform.
@@ -63,7 +63,9 @@ One player taps **Play > Local > Host a game**, and the other sees it in the lis
 - A unit inside the enemy's land can smash an enemy block next to it with dice points: stone 1, wood 2, glass 3.
 - Each turn: fire the cannon once, OR roll the dice 3 times. Points move units one square each (like a chess king), or place repair blocks (wood 1, glass 1, stone 2).
 - If the King dies, one soldier flees. The side that loses its last soldier gets one final shot; wiping out the enemy with it makes the game a draw.
-- Coins: win 10, draw 5, loss 1. A new install starts with 0 coins, no items, and only campaign level 1 open (each level beaten opens the next).
+- Team colours RED and BLUE are in the shop too (Common, 10 coins): whoever equips a colour plays in it, and if both sides end up the same colour, the one who didn't pick it (or player 2) switches to the other one.
+- Cannon looks do things: each has a kill effect where an enemy dies during its shot (gold confetti, flowers, weeds, lime spikes, a ghost skull, a falling icicle, fire, a lightning bolt, demon souls - the turn waits for it). Frost freezes a unit it hits but doesn't kill for its next turn; Red Samurai makes the block its stopped ball touches vanish; The Torch burns wood and treats glass like wood; Blue Storm kills an enemy its stopped ball touches; Shadow Phantom Boom treats stone like wood.
+- Coins: win +10, draw +5, a loss costs 10 (never below 0). A new install starts with 0 coins, no items, and only campaign level 1 open (each level beaten opens the next).
 - The shop has 5 sections by price (the arrows flip between them): Common 10-20 (grey), Uncommon 30-40 (green), Rare 50-60 (orange), Ultra Rare 70-80 (purple), Legendary 90-100 (shiny gold). Each holds the masks, King upgrades, looks, cannons and cannonball powers of that price.
 - Cannonball powers (one equipped at a time, fired once a match from the cannon's ammo bar): Swamp BB wipes out ALL the enemy's stone, The Sun all their wood, The Moon all their glass, as soon as it hits their land. Campaign levels 25+ give the CPU one too.
 - A Bidybab can only be launched once (her clone can't be launched at all).

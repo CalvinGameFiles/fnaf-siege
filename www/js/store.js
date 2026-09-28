@@ -34,9 +34,10 @@ const Store = (() => {
     get: k => d[k],
     set(k, v) { d[k] = v; save(); },
     save,
-    // result: 'win' | 'draw' | 'loss'  ->  coins earned
+    // result: 'win' | 'draw' | 'loss'  ->  coins won (a loss COSTS 10, but never below 0)
     reward(result) {
-      const n = { win: 10, draw: 5, loss: 1 }[result];
+      let n = { win: 10, draw: 5, loss: -10 }[result];
+      if (d.coins + n < 0) n = -d.coins;
       d.coins += n;
       d.stats[{ win: 'wins', draw: 'draws', loss: 'losses' }[result]]++;
       save();
@@ -124,7 +125,8 @@ const ITEMS = {
 // Looks: team colours, block colours, cannons and cannonball powers (bought once, then tap to equip / unequip).
 // items: id -> [name, price]; the cannonball powers also have a picture.
 const COSMETICS = {
-  team: { label: 'Team Colors', items: { green: ['Green', 10], orange: ['Orange', 30], pink: ['Pink', 20], purple: ['Purple', 40], yellow: ['Yellow', 50] } },
+  // RED and BLUE too: whoever buys one plays in it, and the other player switches to the other colour
+  team: { label: 'Team Colors', items: { red: ['Red', 10], blue: ['Blue', 10], green: ['Green', 10], orange: ['Orange', 30], pink: ['Pink', 20], purple: ['Purple', 40], yellow: ['Yellow', 50] } },
   stone: { label: 'Stone', items: { black: ['Black Stone', 40], white: ['White Stone', 50], darkred: ['Dark Red Stone', 60], bluebrick: ['Blue Bricks', 80], mossy: ['Mossy Stone', 20], sandstone: ['Sandstone', 10] } },
   wood: { label: 'Wood', items: { white: ['White Wood', 60], darkoak: ['Dark Oak', 40], birch: ['Birch', 20], spruce: ['Spruce', 10], orange: ['Orange Wood', 50], cherry: ['Cherry Wood', 70] } },
   glass: { label: 'Glass', items: { blue: ['Blue Glass', 10], yellow: ['Yellow Glass', 20], purple: ['Purple Glass', 10], green: ['Green Glass', 30], orange: ['Orange Glass', 40], red: ['Red Glass', 60], pink: ['Pink Glass', 70] } },

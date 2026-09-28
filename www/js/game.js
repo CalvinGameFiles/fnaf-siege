@@ -348,15 +348,19 @@ const Game = (() => {
 
   // team colours, bought in the shop: they recolour a side's unit rings and the tint of its land
   const TEAM_BASE = { blue: { name: 'BLUE', col: '#3d8bff' }, red: { name: 'RED', col: '#ff4a4a' } };
-  const TEAM_COLORS = { green: '#3ddc6a', purple: '#a45cff', orange: '#ff9a2a', yellow: '#ffd83a', pink: '#ff6ec7' };
+  const TEAM_COLORS = { red: '#ff4a4a', blue: '#3d8bff', green: '#3ddc6a', purple: '#a45cff', orange: '#ff9a2a', yellow: '#ffd83a', pink: '#ff6ec7' };
   const hexRgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16)).join(',');
   function applyTeamLooks() {
     const pick = s => (S && S.looks && S.looks[s] && TEAM_COLORS[S.looks[s].team]) ? S.looks[s].team : null;
-    let pb = pick('blue'), pr = pick('red');
-    if (pb && pb === pr) pr = null;                  // both chose the same colour: red keeps red
-    for (const [s, p] of [['blue', pb], ['red', pr]]) {
-      TEAM[s].col = p ? TEAM_COLORS[p] : TEAM_BASE[s].col;
-      TEAM[s].name = p ? p.toUpperCase() : TEAM_BASE[s].name;
+    // player 1 is blue and player 2 red unless they've equipped a team colour. If both end up the same colour,
+    // the one who didn't choose it (or player 2, if both did) switches: to their usual colour, or to the other one
+    // if that's the colour that's taken (buy RED as player 1 and player 2 becomes BLUE).
+    const want = { blue: pick('blue'), red: pick('red') };
+    const col = { blue: want.blue || 'blue', red: want.red || 'red' };
+    if (col.blue === col.red) { const y = !want.red || want.blue ? 'red' : 'blue'; col[y] = col[other(y)] !== y ? y : other(y); }
+    for (const s of ['blue', 'red']) {
+      TEAM[s].col = TEAM_COLORS[col[s]];
+      TEAM[s].name = col[s].toUpperCase();
       TEAM[s].rgb = hexRgb(TEAM[s].col);
     }
   }
@@ -1350,6 +1354,7 @@ const Game = (() => {
     if (g.dead) return;
     const k = kd(u);
     g.hp = 0; removeBody(u);
+    if (S.lastMode === 'cannon' && (S.act === 'fly' || S.act === 'settle') && g.side !== S.turn) killFx(skinOf(S.turn, 'cannon'), u.position.x, u.position.y);
     if (isSoldier(g.kind)) S.graves[g.side].push({ kind: g.kind });        // Funtime Freddy can bring them back
     if (k.boomDeath && zoneOf(unitCell(u).c) === other(g.side)) {          // Funtime Freddy blows up in enemy land
       blastAt(u.position.x, u.position.y, g.side);
@@ -1423,20 +1428,27 @@ const Game = (() => {
     }
     if (og.type === 'ball') return;
     if (og.type === 'unit') {                         // a direct hit
-      if (kd(o).onlyCrush) { shrug(o); g.live = false; return; }   // Dread Bear: it just bounces off
+      if (kd(o).onlyCrush) { shrug(o); if (g.theme === 'frost') freeze(o); g.live = false; return; }   // Dread Bear: it just bounces off
       damageUnit(o, BALL_DMG, 'cannon');
+      if (g.theme === 'frost' && !o.gm.dead) freeze(o);   // the Frost cannon freezes whoever survives a hit
       p.isActive = false;
       Body.setVelocity(ball, { x: ball.velocity.x * 0.85, y: ball.velocity.y * 0.85 });
       return;
     }
     if (og.type !== 'block') return;
     const m = MAT[og.mat];
-    const cost = m.pierce * Math.sqrt(area(og.shape));
+    // the Torch finds glass as tough as wood; the Shadow Phantom Boom finds stone as weak as wood
+    const mm = (g.theme === 'torch' && og.mat === 'glass') || (g.theme === 'phantom' && og.mat === 'stone') ? MAT.wood : m;
+    if (g.theme === 'torch' && og.mat === 'wood') {                            // the Torch sets wood alight, like a fireball
+      ignite(o);                                                              // (and the wood touching it, in case it smashes this one)
+      for (const n of blocks) if (n !== o && !n.gm.dead && n.gm.mat === 'wood' && Math.hypot(n.position.x - o.position.x, n.position.y - o.position.y) < CELL * 2.2) ignite(n);
+    }
+    const cost = mm.pierce * Math.sqrt(area(og.shape));
     if (g.power >= cost) {                            // smash straight through
       g.power -= cost;
       destroyBlock(o);
       p.isActive = false;
-      Body.setVelocity(ball, { x: ball.velocity.x * m.slow, y: ball.velocity.y * m.slow });
+      Body.setVelocity(ball, { x: ball.velocity.x * mm.slow, y: ball.velocity.y * mm.slow });
     } else {                                          // not enough punch left: dent it and bounce
       damageBlock(o, g.power * 1.4 + sp * 0.15);
       if (og.stuck) unstick(o);
@@ -1511,10 +1523,13 @@ const Game = (() => {
         break;
       }
       // an ability spends a roll: the points of the roll in hand, or one of the rolls still to come
-      case 'throwmode':
+      case 'throwmode': {
+        const tu = units.find(x => x.gm.id === a.id);
+        if (tu && isFrozen(tu)) { toast(`${kd(tu).name} is frozen!`); break; }
         S.refund = { pts: S.pts, rolls: S.rolls, bonus: S.bonus };
         if (S.pts > 0) S.pts = 0; else S.rolls--;
         S.bonus = null; S.act = 'throw'; S.throwBy = a.id; S.throwKind = a.kind || 'cupcake'; S.aimVec = null; break;
+      }
       case 'throwcancel':
         if (S.refund) { S.pts = S.refund.pts; S.rolls = S.refund.rolls; S.bonus = S.refund.bonus; }
         S.refund = null; S.act = 'dice'; S.throwBy = null; break;
@@ -1527,7 +1542,7 @@ const Game = (() => {
       case 'flip': { const s = specials.find(x => x.id === a.id); if (s) { s.dir = -s.dir; Sfx.play('click'); } break; }
       case 'tele': {                                   // Pitch Black Ennard: spends a roll like the other abilities
         const u = units.find(x => x.gm.id === a.id && !x.gm.dead);
-        if (!u || S.rolling || !(S.pts > 0 || S.rolls > 0) || !teleCells(u).some(t => t.c === a.c && t.r === a.r)) break;
+        if (!u || isFrozen(u) || S.rolling || !(S.pts > 0 || S.rolls > 0) || !teleCells(u).some(t => t.c === a.c && t.r === a.r)) break;
         if (S.pts > 0) S.pts = 0; else S.rolls--;
         S.bonus = null;
         teleport(u, a.c, a.r);
@@ -1557,7 +1572,7 @@ const Game = (() => {
     if (tbu) { tb = tbOf(tbu); poof(tbu.position.x, tbu.position.y); removeBody(tbu); }
     const pw = !tb && power && powerOf(side);        // the side's cannonball power, once a match
     if (pw) { S.powerUsed[side] = true; S.ammo = 'ball'; }
-    makeBall(m.x, m.y, vx, vy, side, { tb, cpu: S.cpu === side, pw: pw || null });
+    makeBall(m.x, m.y, vx, vy, side, { tb, cpu: S.cpu === side, pw: pw || null, theme: tb ? null : skinOf(side, 'cannon') });
     S.act = 'fly'; S.quiet = 0; S.settleT = 0; S.aimVec = null;
     S.shotLog = { blocks: 0, hits: 0, kills: 0 };
     S.flyView = 'ball';
@@ -1585,6 +1600,7 @@ const Game = (() => {
     removeBody(b);
     if (g.shot) { puff(b.position.x, b.position.y, g.shot === 'ooze' ? '255,110,210' : g.shot === 'rad' ? '120,255,80' : g.shot === 'festive' ? '140,255,160' : g.shot === 'blue' ? '90,150,255' : '120,120,120', 6); return; }
     if (g.pw && !g.pwDone && zoneOf(Math.floor(clamp(b.position.x, 0, W - 1) / CELL)) === other(g.side) && b.position.y < H + CELL) firePower(b);
+    if (g.theme && b.position.x > WORLD_X0 && b.position.x < WORLD_X1 && b.position.y < H + CELL) ballStopped(b);
     if (!g.tb) return;
     if (b.position.x < WORLD_X0 || b.position.x > WORLD_X1 || b.position.y > H + CELL) {
       toast(`${kdOf(g.tb.kind, g.tb.up, g.tb.ab).name} flew off the map!`);
@@ -1598,6 +1614,69 @@ const Game = (() => {
     if (kd(u).dust && zoneOf(Math.floor(lx / CELL)) === other(g.side)) dustBurst(other(g.side));
     Body.setVelocity(u, { x: b.velocity.x * 0.3, y: 0 });
     poof(b.position.x, b.position.y);
+  }
+  // a cannonball from a themed cannon has come to rest
+  function ballStopped(b) {
+    const g = b.gm, x = b.position.x, y = b.position.y, R = CELL * 0.35;
+    if (g.theme === 'samurai') {                     // the Red Samurai Cannon: the block it's touching vanishes
+      for (let i = 0; i < 16; i++) {
+        const a = Math.PI / 2 + i * Math.PI / 8, o = solidAt(x + Math.cos(a) * (R + 10), y + Math.sin(a) * (R + 10));
+        if (o && o.gm && o.gm.type === 'block' && !o.gm.dead && o.gm.side !== g.side) {
+          destroyBlock(o);
+          for (let k = 0; k < 14; k++) parts.push({ t: 'spark', x: o.position.x, y: o.position.y, vx: rand(-5, 5), vy: rand(-5, 2), life: 0.6, max: 0.6, col: pick(['#d61f2c', '#ff5050', '#ffd24a']), grav: 0.1 });
+          break;
+        }
+      }
+    } else if (g.theme === 'storm') {                // the Blue Storm Destroyer: an enemy it's touching is struck down
+      for (const u of units.slice()) {
+        if (u.gm.dead || u.gm.side === g.side || u.gm.dig) continue;
+        if (Math.hypot(u.position.x - x, u.position.y - y) < R + CELL * 0.47 + 6) { if (kd(u).onlyCrush) shrug(u); else killUnit(u); }
+      }
+    }
+  }
+  // the Frost cannon: frozen in an ice cube, the unit can't do anything on its side's next turn
+  const isFrozen = u => !!(u.gm.frozenUntil && S.turnNo < u.gm.frozenUntil);
+  function freeze(u) {
+    u.gm.frozenUntil = S.turnNo + 2;
+    Sfx.play('glass');
+    for (let i = 0; i < 12; i++) parts.push({ t: 'spark', x: u.position.x + rand(-15, 15), y: u.position.y + rand(-15, 15), vx: rand(-2, 2), vy: rand(-3, 1), life: 0.6, max: 0.6, col: pick(['#dff5ff', '#8fdcff', '#ffffff']), grav: 0.05 });
+    toast(`${kd(u).name} is frozen solid for a turn!`);
+  }
+
+  // ---- cannon kill effects: an enemy that dies during a side's cannon shot gets that cannon's little show,
+  // right where it died. The turn (and the camera) waits until it's over.
+  const TRAIL = { gold: '255,220,80', rose: '255,150,200', jungle: '90,160,60', scale: '150,230,60', bone: '235,230,220', frost: '200,240,255',
+    torch: '255,140,40', storm: '120,160,255', phantom: '170,90,255', samurai: '220,50,50' };
+  const KILL_FX = { gold: 'confetti', rose: 'flowers', jungle: 'weeds', scale: 'spikes', bone: 'skull', frost: 'icicle', torch: 'flames', storm: 'bolt', phantom: 'souls' };
+  function surfaceBelow(x, y) { for (let yy = y; yy < H; yy += 4) { const o = solidAt(x, yy); if (o && o.gm && o.gm.type !== 'unit') return yy; } return Math.min(H, groundRow(Math.floor(x / CELL)) * CELL); }
+  function killFx(theme, x, y) {
+    const fx = KILL_FX[theme];
+    if (!fx) return;
+    const gy = surfaceBelow(x, y + CELL * 0.3);
+    if (fx === 'confetti') {
+      for (let i = 0; i < 46; i++) parts.push({ t: 'confetti', kfx: true, x, y, vx: rand(-6, 6), vy: rand(-11, -3), grav: 0.28, rot: rand(0, 6), vr: rand(-0.4, 0.4), s: rand(5, 9),
+        col: pick(['#ffd23a', '#ffe98a', '#e8b923', '#fff6d0', '#c8961a']), life: rand(1.3, 1.9), max: 1.9 });
+      Sfx.play('win');
+    } else if (fx === 'flowers') {
+      for (let i = 0; i < 14; i++) parts.push({ t: 'flower', kfx: true, x, y, vx: rand(-5, 5), vy: rand(-9, -3), grav: 0.22, rot: rand(0, 6), vr: rand(-0.2, 0.2), s: rand(6, 10),
+        col: pick(['#ff8fb8', '#ffb0d0', '#ff5a9a', '#ffd0e0']), life: rand(1.4, 1.9), max: 1.9 });
+      Sfx.play('magic');
+    } else {
+      const dur = { weeds: 1.8, spikes: 1.4, skull: 2.0, icicle: 1.6, flames: 2.0, bolt: 1.0, souls: 2.0 }[fx];
+      const bits = Array.from({ length: 7 }, () => Math.random());
+      const p = { t: 'kfx', kfx: true, fx, x, y, gy, bits, life: dur, max: dur };
+      if (fx === 'bolt') {                            // a jagged path down from the sky, fixed when it strikes
+        p.path = []; let px = x + rand(-60, 60);
+        for (let yy = gy - 620; yy < gy; yy += 40) { p.path.push([px, yy]); px += rand(-26, 26); px += (x - px) * 0.25; }
+        p.path.push([x, gy]);
+        cam.shake = Math.max(cam.shake, 12); Sfx.play('blast');
+        parts.push({ t: 'flash', x, y: gy - 10, s: CELL * 1.6, life: 0.2, max: 0.2 });
+      }
+      if (fx === 'icicle') Sfx.play('glass');
+      if (fx === 'flames') Sfx.play('fire');
+      if (fx === 'spikes' || fx === 'weeds') Sfx.play('stone');
+      parts.push(p);
+    }
   }
   // what a unit turns into while it flies as a ball (and back again when it lands)
   // (a Bidybab can only ever be launched once: she and her clone land 'spent')
@@ -2021,7 +2100,7 @@ const Game = (() => {
   const canPassThrough = (u, b) => b.gm.side === u.gm.side || kd(u).phase === 'all' || kd(u).phase === b.gm.mat;
   // Foxy moves two squares for every dice point: the second square is a free "bonus" step
   const hasBonus = id => !!(S.bonus && S.bonus.n > 0 && (id == null || S.bonus.id === id));
-  const canStep = u => S.pts > 0 || hasBonus(u.gm.id);
+  const canStep = u => (S.pts > 0 || hasBonus(u.gm.id)) && !isFrozen(u);
   function moveUnit(u, c, r) {
     if (!canStep(u)) return;
     const t = moveTargets(u).find(t => t.c === c && t.r === r);
@@ -2073,7 +2152,7 @@ const Game = (() => {
   function djReach(side) {
     const djs = aliveUnits(side).filter(u => kd(u).tosser);
     if (!djs.length) return [];
-    return aliveUnits(side).filter(u => !kd(u).tosser && !u.gm.dig
+    return aliveUnits(side).filter(u => !kd(u).tosser && !u.gm.dig && !isFrozen(u)
       && djs.some(d => Math.hypot(d.position.x - u.position.x, d.position.y - u.position.y) < CELL * 1.6));
   }
   // Pitch Black Ennard can appear on any free square next to one of his comrades
@@ -2196,7 +2275,7 @@ const Game = (() => {
       blocks: blocks.filter(b => !b.gm.dead).map(b => [b.gm.id, b.gm.shape, b.gm.mat, r2(b.position.x), r2(b.position.y), r2(b.angle), r2(b.gm.hp),
         b.gm.stuck ? 1 : 0, b.gm.mover, b.gm.adj, b.gm.side, b.gm.maxis || 'x']),
       clouds: clouds.map(b => [b.gm.id, b.gm.shape, r2(b.position.x), r2(b.position.y), b.gm.adj]),
-      units: units.filter(u => !u.gm.dead).map(u => [u.gm.id, u.gm.side, u.gm.kind, r2(u.position.x), r2(u.position.y), r2(u.angle), u.gm.hp, u.gm.hang ? 1 : 0, u.gm.threw ? 1 : 0, u.gm.dig ? 1 : 0, u.gm.up, u.gm.ab, u.gm.mhp, u.gm.blessed ? 1 : 0, u.gm.spent ? 1 : 0]),
+      units: units.filter(u => !u.gm.dead).map(u => [u.gm.id, u.gm.side, u.gm.kind, r2(u.position.x), r2(u.position.y), r2(u.angle), u.gm.hp, u.gm.hang ? 1 : 0, u.gm.threw ? 1 : 0, u.gm.dig ? 1 : 0, u.gm.up, u.gm.ab, u.gm.mhp, u.gm.blessed ? 1 : 0, u.gm.spent ? 1 : 0, u.gm.frozenUntil || 0]),
       specials: specials.map(s => ({ ...s })),
       tunnels: S.tunnels.slice(), graves: JSON.parse(JSON.stringify(S.graves)),
     };
@@ -2214,9 +2293,9 @@ const Game = (() => {
       if (mat === 'plastic') { b.gm.max = MAT.plastic.hp * Math.sqrt(area(shape)); b.gm.hp = Math.min(b.gm.hp, b.gm.max); }
       if (stuck || mover) Body.setStatic(b, true); else Sleeping.set(b, true);
     }
-    for (const [id, side, kind, x, y, a, hp, hang, threw, dig, up, ab, mhp, blessed, spent] of s.units) {
+    for (const [id, side, kind, x, y, a, hp, hang, threw, dig, up, ab, mhp, blessed, spent, frozenUntil] of s.units) {
       const u = makeUnit(side, kind, x, y, id, hp, a, up, ab, mhp);
-      u.gm.threw = !!threw; u.gm.blessed = !!blessed; u.gm.spent = !!spent;
+      u.gm.threw = !!threw; u.gm.blessed = !!blessed; u.gm.spent = !!spent; u.gm.frozenUntil = frozenUntil || 0;
       if (dig) setBurrow(u, true); else if (hang) setHang(u, true); else Sleeping.set(u, true);
     }
     specials = s.specials.map(x => ({ ...x }));
@@ -2256,7 +2335,7 @@ const Game = (() => {
       if (b.speed < 0.6) g.still++; else g.still = 0;
       if (g.still > 45 || g.age > 60 * 12) { landBall(b); continue; }
       if (g.age % 2 === 0 && !g.tb && g.shot !== 'cookie') parts.push({ t: 'smoke', x: b.position.x, y: b.position.y, vx: 0, vy: 0, s: g.shot ? 10 : 6, life: 0.5, max: 0.5,
-        col: g.shot === 'ooze' ? '255,110,210' : g.shot === 'rad' ? '140,255,80' : g.shot === 'festive' ? (g.age % 4 ? '80,230,110' : '240,60,80') : g.shot === 'blue' ? '80,140,255' : g.shot ? '255,140,40' : '230,230,230' });
+        col: g.shot === 'ooze' ? '255,110,210' : g.shot === 'rad' ? '140,255,80' : g.shot === 'festive' ? (g.age % 4 ? '80,230,110' : '240,60,80') : g.shot === 'blue' ? '80,140,255' : g.shot ? '255,140,40' : TRAIL[g.theme] || '230,230,230' });
       // Bidybab splits in two near the top of the flight: a clone flies off beside her
       if (g.tb && g.tb.kind !== 'king' && kdOf(g.tb.kind, g.tb.up, g.tb.ab).split && !g.split && g.age > 12 && b.velocity.y > -3) {
         g.split = true;
@@ -2283,7 +2362,7 @@ const Game = (() => {
     flushRemovals();
     if (S.act === 'fly' || S.act === 'settle') {
       S.settleT += STEP;
-      let moving = balls.length > 0 || burning > 0;
+      let moving = balls.length > 0 || burning > 0 || parts.some(p => p.kfx);   // (kill effects finish before the camera moves on)
       if (!moving) for (const b of blocks.concat(units))
         if (!b.isSleeping && !b.isStatic && !riding.has(b) && (b.speed > 0.25 || Math.abs(b.angularVelocity) > 0.012)) { moving = true; break; }
       S.quiet = moving ? 0 : S.quiet + 1;
@@ -2353,7 +2432,10 @@ const Game = (() => {
         }
       }
       drawDust(now);
-      for (const u of units) drawUnit(u.position.x, u.position.y - (u.gm.hop > 0 ? Math.sin(u.gm.hop / 0.25 * Math.PI) * 10 : 0), u.angle, u.gm.side, vk(u.gm), u.gm.lid, u.gm.hp, 1, u.gm.id === S.sel, u.gm.mhp);
+      for (const u of units) {
+        drawUnit(u.position.x, u.position.y - (u.gm.hop > 0 ? Math.sin(u.gm.hop / 0.25 * Math.PI) * 10 : 0), u.angle, u.gm.side, vk(u.gm), u.gm.lid, u.gm.hp, 1, u.gm.id === S.sel, u.gm.mhp);
+        if (isFrozen(u)) drawIce(u.position.x, u.position.y);
+      }
       for (const b of balls) drawBall(b);
     }
     drawParts();
@@ -2595,10 +2677,14 @@ const Game = (() => {
       ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(0, 0, rr, 0, 7); ctx.fill(); ctx.restore();
       return;
     }
-    const r = CELL * 0.35;
+    const r = CELL * 0.35, T = b.gm.theme && b.gm.theme !== 'default' && CANNON_THEMES[b.gm.theme];
     ctx.save(); ctx.translate(b.position.x, b.position.y);
+    if (b.gm.theme === 'torch' || b.gm.theme === 'storm' || b.gm.theme === 'frost') {       // a glow around the hotter / colder balls
+      ctx.fillStyle = b.gm.theme === 'torch' ? 'rgba(255,120,20,0.35)' : b.gm.theme === 'storm' ? 'rgba(120,170,255,0.35)' : 'rgba(190,235,255,0.35)';
+      ctx.beginPath(); ctx.arc(0, 0, r * 1.6 + Math.sin(performance.now() / 60) * 2, 0, 7); ctx.fill();
+    }
     const gr = ctx.createRadialGradient(-r * 0.3, -r * 0.3, 2, 0, 0, r);
-    gr.addColorStop(0, '#777'); gr.addColorStop(1, '#2b2b30');
+    gr.addColorStop(0, T ? T.band || T.barrel : '#777'); gr.addColorStop(1, T ? T.dark : '#2b2b30');
     ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(0, 0, r, 0, 7); ctx.fill();
     ctx.restore();
   }
@@ -2647,6 +2733,84 @@ const Game = (() => {
     const cx = hide === 'blue' ? BLUE_END * CELL / 2 : (RED_START + COLS) * CELL / 2;
     for (let y = 300; y < H; y += 600) ctx.fillText(`${TEAM[hide].name} ${msg}`, cx, y);
   }
+  // k = how far through the effect (0 -> 1)
+  function drawIce(x, y) {                          // a unit frozen solid by the Frost cannon
+    const s = CELL * 1.25;
+    ctx.save(); ctx.translate(x, y - CELL * 0.2);
+    ctx.fillStyle = 'rgba(170,225,255,0.45)'; ctx.strokeStyle = 'rgba(235,250,255,0.9)'; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.roundRect(-s / 2, -s / 2, s, s, 7); ctx.fill(); ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,255,255,0.75)'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(-s * 0.36, -s * 0.1); ctx.lineTo(-s * 0.1, -s * 0.36); ctx.moveTo(-s * 0.36, s * 0.12); ctx.lineTo(s * 0.12, -s * 0.36); ctx.stroke();
+    ctx.restore();
+  }
+  function drawKillFx(p, k) {
+    const { x, gy, bits } = p, fade = k > 0.7 ? (1 - k) / 0.3 : 1, now = performance.now();
+    ctx.save(); ctx.globalAlpha = fade;
+    if (p.fx === 'weeds') {                          // weeds grow up out of the ground and sway
+      const grow = Math.min(1, k / 0.4);
+      for (let i = 0; i < 5; i++) {
+        const bx = x + (i - 2) * 13 + bits[i] * 6, h = (44 + bits[i] * 38) * grow, sw = Math.sin(now / 250 + i) * 6 * grow;
+        ctx.strokeStyle = i % 2 ? '#3f7a24' : '#5a9a2e'; ctx.lineWidth = 5; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(bx, gy); ctx.quadraticCurveTo(bx - 8 + bits[i + 1] * 16, gy - h * 0.6, bx + sw, gy - h); ctx.stroke();
+        ctx.fillStyle = '#6fbf3a';
+        for (const t of [0.45, 0.75]) { ctx.beginPath(); ctx.ellipse(bx + sw * t + (i % 2 ? 7 : -7), gy - h * t, 10 * grow, 4 * grow, i % 2 ? -0.6 : 0.6, 0, 7); ctx.fill(); }
+      }
+    } else if (p.fx === 'spikes') {                  // lime spikes burst up out of the ground, then sink back
+      const up = k < 0.12 ? k / 0.12 : k > 0.75 ? (1 - k) / 0.25 : 1;
+      for (let i = 0; i < 6; i++) {
+        const bx = x + (i - 2.5) * 12, h = (34 + bits[i] * 34) * up, lean = (bits[i] - 0.5) * 12;
+        ctx.fillStyle = '#8fdc2e'; ctx.strokeStyle = '#2f5a10'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(bx - 7, gy); ctx.lineTo(bx + lean, gy - h); ctx.lineTo(bx + 7, gy); ctx.closePath(); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.beginPath(); ctx.moveTo(bx - 3, gy); ctx.lineTo(bx + lean, gy - h); ctx.lineTo(bx, gy); ctx.fill();
+      }
+    } else if (p.fx === 'skull') {                   // a ghostly skull and crossbones floats up
+      const yy = p.y - k * 90, xx = x + Math.sin(k * 9) * 10;
+      ctx.globalAlpha = fade * (k < 0.15 ? k / 0.15 : 1) * 0.9;
+      ctx.translate(xx, yy);
+      ctx.shadowColor = 'rgba(255,255,255,0.8)'; ctx.shadowBlur = 12;
+      ctx.fillStyle = '#f4f1e8';
+      for (const r of [0.7, -0.7]) { ctx.save(); ctx.rotate(r); ctx.beginPath(); ctx.roundRect(-22, -3.5, 44, 7, 3.5); ctx.fill();
+        for (const e of [-22, 22]) { ctx.beginPath(); ctx.arc(e, -3, 4, 0, 7); ctx.arc(e, 3, 4, 0, 7); ctx.fill(); } ctx.restore(); }
+      ctx.beginPath(); ctx.arc(0, -6, 13, 0, 7); ctx.fill(); ctx.beginPath(); ctx.roundRect(-8, 2, 16, 10, 3); ctx.fill();
+      ctx.shadowBlur = 0; ctx.fillStyle = '#15151a';
+      ctx.beginPath(); ctx.arc(-5, -6, 3.6, 0, 7); ctx.arc(5, -6, 3.6, 0, 7); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(0, -1); ctx.lineTo(-2, 2); ctx.lineTo(2, 2); ctx.fill();
+      for (const tx of [-4, 0, 4]) ctx.fillRect(tx - 0.8, 6, 1.6, 5);
+    } else if (p.fx === 'icicle') {                  // an icicle drops out of the sky and spears the ground
+      const fall = Math.min(1, k / 0.3), tip = gy + 8 - (1 - fall * fall) * 520, len = 64;
+      ctx.translate(x, tip);
+      const gr = ctx.createLinearGradient(-9, 0, 9, 0); gr.addColorStop(0, '#bfeaff'); gr.addColorStop(0.5, '#ffffff'); gr.addColorStop(1, '#6fc4ee');
+      ctx.fillStyle = gr; ctx.strokeStyle = '#3a8ec0'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(-10, -len); ctx.lineTo(10, -len); ctx.closePath(); ctx.fill(); ctx.stroke();
+      if (fall >= 1) {                              // shattered ice around where it hit
+        ctx.fillStyle = 'rgba(220,245,255,0.9)';
+        for (let i = 0; i < 6; i++) { const d = (k - 0.3) * 60 * (0.5 + bits[i]); ctx.fillRect((i - 2.5) * 6 + (i < 3 ? -d : d), -6 - bits[i] * 10 + (k - 0.3) * 30, 4, 4); }
+      }
+    } else if (p.fx === 'flames') {                  // a fire burning on the spot
+      for (let i = 0; i < 5; i++) {
+        const bx = x + (i - 2) * 9, h = (26 + bits[i] * 22) * (0.75 + 0.25 * Math.sin(now / 70 + i * 2)) * Math.min(1, k / 0.12);
+        const gr = ctx.createLinearGradient(bx, gy, bx, gy - h); gr.addColorStop(0, '#ff5a00'); gr.addColorStop(0.6, '#ffb020'); gr.addColorStop(1, 'rgba(255,240,120,0)');
+        ctx.fillStyle = gr; ctx.beginPath(); ctx.moveTo(bx - 8, gy); ctx.quadraticCurveTo(bx - 9, gy - h * 0.5, bx + Math.sin(now / 90 + i) * 4, gy - h); ctx.quadraticCurveTo(bx + 9, gy - h * 0.5, bx + 8, gy); ctx.fill();
+      }
+    } else if (p.fx === 'bolt') {                    // a lightning bolt from the sky
+      ctx.globalAlpha = fade * (0.6 + 0.4 * Math.abs(Math.sin(now / 30)));
+      for (const [w, c] of [[12, 'rgba(90,150,255,0.45)'], [5, '#bcd8ff'], [2, '#ffffff']]) {
+        ctx.strokeStyle = c; ctx.lineWidth = w; ctx.lineJoin = 'round'; ctx.beginPath();
+        p.path.forEach(([px, py], i) => (i ? ctx.lineTo(px, py) : ctx.moveTo(px, py))); ctx.stroke();
+      }
+      ctx.fillStyle = 'rgba(160,200,255,0.5)'; ctx.beginPath(); ctx.ellipse(x, gy, 26, 7, 0, 0, 7); ctx.fill();
+    } else if (p.fx === 'souls') {                   // purple demon souls wriggle up out of the ground and fade
+      for (let i = 0; i < 6; i++) {
+        const t = Math.max(0, k - bits[i] * 0.25), bx = x + (i - 2.5) * 15 + Math.sin(t * 14 + i) * 9, by = gy - 8 - t * (70 + bits[i] * 40);
+        ctx.globalAlpha = fade * Math.max(0, Math.min(1, t * 5)) * (1 - t * 0.6);
+        ctx.fillStyle = i % 2 ? '#8a3ad8' : '#b36bff';
+        ctx.beginPath(); ctx.arc(bx, by, 11, Math.PI, 0);
+        ctx.lineTo(bx + 11, by + 14); ctx.lineTo(bx + 5, by + 9); ctx.lineTo(bx, by + 15); ctx.lineTo(bx - 5, by + 9); ctx.lineTo(bx - 11, by + 14); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = '#1a0628'; ctx.beginPath(); ctx.arc(bx - 4, by - 1, 2.4, 0, 7); ctx.arc(bx + 4, by - 1, 2.4, 0, 7); ctx.fill();
+      }
+    }
+    ctx.restore();
+  }
   function drawParts() {
     for (const p of parts) {
       const a = clamp(p.life / p.max, 0, 1);
@@ -2661,6 +2825,16 @@ const Game = (() => {
       } else if (p.t === 'text') {
         ctx.globalAlpha = a; ctx.fillStyle = p.col; ctx.font = 'bold 28px Impact, Arial Black, sans-serif'; ctx.textAlign = 'center';
         ctx.strokeStyle = '#000'; ctx.lineWidth = 4; ctx.strokeText(p.txt, p.x, p.y); ctx.fillText(p.txt, p.x, p.y);
+      } else if (p.t === 'confetti') {
+        ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot); ctx.globalAlpha = Math.min(1, a * 2.5); ctx.fillStyle = p.col;
+        ctx.fillRect(-p.s / 2, -p.s * 0.3, p.s, p.s * 0.6 * Math.abs(Math.cos(p.rot * 3))); ctx.restore();
+      } else if (p.t === 'flower') {
+        ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot); ctx.globalAlpha = Math.min(1, a * 2.5);
+        ctx.fillStyle = p.col;
+        for (let k = 0; k < 5; k++) { const an = k * 1.2566; ctx.beginPath(); ctx.ellipse(Math.cos(an) * p.s * 0.55, Math.sin(an) * p.s * 0.55, p.s * 0.45, p.s * 0.3, an, 0, 7); ctx.fill(); }
+        ctx.fillStyle = '#ffe04a'; ctx.beginPath(); ctx.arc(0, 0, p.s * 0.3, 0, 7); ctx.fill(); ctx.restore();
+      } else if (p.t === 'kfx') {
+        drawKillFx(p, 1 - a);
       } else if (p.t === 'head') {
         ctx.globalAlpha = 1; drawUnit(p.x, p.y, p.rot, p.side, p.kind, 1, 0, a);
       } else if (p.t === 'flee') {                     // hop, hop, hop... off the map
@@ -3091,7 +3265,7 @@ const Game = (() => {
       let btns = '';
       if (camp && o.outcome === 'win' && S.level < LEVELS.length - 1) btns += '<button class="mbtn" data-o="next">NEXT LEVEL</button>';
       if (camp && o.outcome !== 'win') btns += '<button class="mbtn" data-o="retry">TRY AGAIN</button>';
-      h = `<h2 style="color:${col}">${title}</h2><p>${who} <span class="coin">+${o.coins}</span> coins</p><p class="small">Win 10 &middot; Draw 5 &middot; Loss 1</p>
+      h = `<h2 style="color:${col}">${title}</h2><p>${who} <span class="coin">${o.coins < 0 ? '' : '+'}${o.coins}</span> coins</p><p class="small">Win +10 &middot; Draw +5 &middot; Loss -10</p>
         ${btns}<button class="mbtn gray" data-o="quit">${camp ? 'CAMPAIGN' : 'MAIN MENU'}</button>`;
     } else if (kind === 'left') {
       h = `<h2>MATCH OVER</h2><p>${o.reason || 'Your opponent left.'}</p><button class="mbtn" data-o="quit">MAIN MENU</button>`;
@@ -3383,7 +3557,7 @@ const Game = (() => {
     debug: {
       get S() { return S; }, get blocks() { return blocks; }, get clouds() { return clouds; }, get units() { return units; }, get balls() { return balls; },
       get specials() { return specials; }, get engine() { return engine; },
-      genFort, autoUnits, readyUp, checkSpecials, doAct, moveTargets, aimVelocity, cpuAim, snapshot, applySnapshot, onBar, tap, buildTap, makeBlock, makeUnit,
+      genFort, autoUnits, readyUp, checkSpecials, applyTeamLooks, makeBall, landBall, freeze, isFrozen, killFx, get parts() { return parts; }, doAct, moveTargets, aimVelocity, cpuAim, snapshot, applySnapshot, onBar, tap, buildTap, makeBlock, makeUnit,
       CELL, H, W, CANNON, unitCell, cam, toScreen, refocus, frameTarget, sideRect, breakTargets, setMap, get GROUND() { return GROUND; },
       frameNow: () => { update(0); draw(performance.now()); },
       saveFort, loadFort, skinOf, FORT_STYLES, BALL_POWERS, powerOf, TEAM, ignite, djReach, teleCells, dusted, kd, reviveSpot, damageUnit, cpuShoot, LEVELS,

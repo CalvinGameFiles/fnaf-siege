@@ -124,10 +124,23 @@
     for (const cat in COSMETICS) for (const id in COSMETICS[cat].items) {
       const [name, price, img] = COSMETICS[cat].items[id];
       out.push({ key: cat + ':' + id, cat: COSMETICS[cat].label, name, price, img: img || previews[cat + ':' + id] || (previews[cat + ':' + id] = Game.preview(cat, id)), look: cat, id,
-        desc: cat === 'ball' ? BALL_DESC[id] : '' });
+        desc: cat === 'ball' ? BALL_DESC[id] : cat === 'cannon' ? CANNON_DESC[id] : cat === 'team' && (id === 'red' || id === 'blue') ? 'Play as this colour - the other player switches to the other one.' : '' });
     }
     return out;
   }
+  // what each cannon does (shown when you tap it in the shop)
+  const CANNON_DESC = {
+    gold: 'Kills burst into golden confetti.',
+    rose: 'Kills burst into flowers.',
+    jungle: 'Weeds grow where its kills fall.',
+    scale: 'Green spikes erupt where its kills fall.',
+    bone: 'A ghostly skull and crossbones rises from its kills.',
+    frost: 'An icicle spears each kill - and a unit it hits but doesn\'t kill is frozen in ice for a turn.',
+    samurai: 'When the ball stops, the block it\'s touching vanishes.',
+    torch: 'Sets wood on fire, finds glass as tough as wood, and its kills burn.',
+    storm: 'Lightning strikes its kills - and an enemy the ball is touching when it stops is struck down too.',
+    phantom: 'Stone is as weak as wood to it, and demon souls rise from its kills.',
+  };
   const BALL_DESC = {
     moon: 'Cannonball power: fire it once a match. When it hits the enemy base, ALL their glass is destroyed.',
     sun: 'Cannonball power: fire it once a match. When it hits the enemy base, ALL their wood is destroyed.',
@@ -166,9 +179,9 @@
       if (!o[it.key]) {
         if (Store.get('coins') < it.price) { Sfx.play('bad'); toast(`Not enough coins - ${it.name} costs ${it.price}`); return; }
         Store.set('coins', Store.get('coins') - it.price);
-        o[it.key] = true; Store.set('owned', o); L[it.look] = it.id; Sfx.play('win'); toast(`${it.name} bought and equipped!`);
+        o[it.key] = true; Store.set('owned', o); L[it.look] = it.id; Sfx.play('win'); toast(`${it.name} bought and equipped!${it.desc ? ' ' + it.desc : ''}`);
       } else if (L[it.look] === it.id) { delete L[it.look]; Sfx.play('back'); toast(`${it.name} taken off`); }
-      else { L[it.look] = it.id; Sfx.play('click'); toast(`${it.name} equipped`); }
+      else { L[it.look] = it.id; Sfx.play('click'); toast(`${it.name} equipped${it.desc ? ' - ' + it.desc : ''}`); }
       Store.set('looks', L);
     }
     renderShop(); coinsNow();
