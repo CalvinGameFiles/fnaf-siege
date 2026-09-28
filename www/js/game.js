@@ -1574,7 +1574,8 @@ const Game = (() => {
   const muzzle = (side, ang) => ({ x: CANNON[side].x + Math.cos(ang) * CELL * 1.5, y: CANNON[side].y + Math.sin(ang) * CELL * 1.5 });
   function fire(vx, vy, tbId = null, power = false) {
     const side = S.turn, ang = Math.atan2(vy, vx);
-    if (++S.heat[side] >= 3) { S.heat[side] = 0; S.cool[side] = 2; toast(`${TEAM[side].name}'s cannon OVERHEATED - it cools down for 2 turns`); }
+    // (a miss's one more try doesn't heat the cannon up again)
+    if (!S.retried && ++S.heat[side] >= 3) { S.heat[side] = 0; S.cool[side] = 2; toast(`${TEAM[side].name}'s cannon OVERHEATED - it cools down for 2 turns`); }
     S.aimAng[side] = ang;
     const m = muzzle(side, ang);
     let tb = null;                                   // a launchable fighter climbs into the cannon and becomes the ball
@@ -2281,7 +2282,7 @@ const Game = (() => {
     flushRemovals();
     // a cannon shot that smashed no block and took out no unit gets ONE more try; a second miss ends the turn
     const L0 = S.shotLog;
-    if (L0 && S.lastMode === 'cannon' && !L0.blocks && !L0.kills && !S.retried && !S.cannonDown[S.turn] && !S.fled.length && soldiers('blue') && soldiers('red')) {
+    if (L0 && S.lastMode === 'cannon' && !L0.blocks && !L0.kills && !S.retried && !S.cannonDown[S.turn] && !S.cool[S.turn] && !S.fled.length && soldiers('blue') && soldiers('red')) {
       S.shotLog = null;
       if (S.mode === 'online') Net.send({ type: 'sync', snap: snapshot(), st: { turn: S.turn, retry: true, final: S.final, fled: [], cannonDown: S.cannonDown, cannonHp: S.cannonHp, heat: S.heat, cool: S.cool, powerUsed: S.powerUsed } });
       retryShot();

@@ -81,6 +81,9 @@ try:
     E(f"{D}.doAct({{t:'shot', vx: 20, vy: -24, tb: {tb}}})"); cdp.pump(0.8)
     check("Toy Bonnie flies as the cannonball", E(f"{D}.balls.some(b=>b.gm.tb && b.gm.tb.id==={tb})") is True)
     shot("61-toybonnie-flying")
+    # (if Toy Bonnie smashed nothing, blue gets one more try: take it)
+    wait(f"{D}.S.turn==='red' || ({D}.S.act==='aim' && {D}.S.retried)", 30)
+    if E(f"{D}.S.act==='aim' && {D}.S.retried"): E(f"{D}.doAct({{t:'shot', vx:-2, vy:-2}})")
     check("the turn passes", wait(f"{D}.S.turn==='red'", 30))
     where = E(f"(() => {{ const u={D}.units.find(u=>u.gm.id==={tb}); return u ? [u.gm.kind, {D}.unitCell(u).c] : null; }})()")
     check("Toy Bonnie got up where he landed", where is not None and where[0] == "toybonnie" and where[1] > 20, str(where))
@@ -160,7 +163,7 @@ try:
     E("document.getElementById('overlay').classList.add('hidden')")
     before = E(f"{D}.units.filter(u=>u.gm.side==='red'&&(u.gm.kind==='bb'||u.gm.kind==='foxy')).map(u=>{D}.unitCell(u).c)")
     moved = False
-    for _ in range(6):
+    for _ in range(12):
         E(f"{D}.S.turn==='blue' && {D}.S.act==='choose' && ({D}.doAct({{t:'mode', v:'dice'}}), {D}.doAct({{t:'endturn'}}))")
         wait(f"{D}.S.turn==='red'", 15)
         E(f"(() => {{ const S={D}.S; if (S.act==='choose') {{ Math.__r = Math.random; }} }})()")

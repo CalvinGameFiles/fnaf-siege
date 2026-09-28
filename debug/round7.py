@@ -72,7 +72,11 @@ try:
     fresh([], [], blue9(), red10())
     cdp.pump(0.5)
     def blue_fires():
-        E(f"{D}.onBar('cannon'); {D}.doAct({{t:'shot', vx:-3, vy:-3}})"); wait(f"{D}.S.turn==='red'", 20)
+        E(f"{D}.onBar('cannon'); {D}.doAct({{t:'shot', vx:-3, vy:-3}})")
+        # a miss gets one more try (it doesn't add heat): take it so the turn passes
+        wait(f"{D}.S.turn==='red' || ({D}.S.act==='aim' && {D}.S.retried)", 20)
+        if E(f"{D}.S.act==='aim' && {D}.S.retried"): E(f"{D}.doAct({{t:'shot', vx:-3, vy:-3}})")
+        wait(f"{D}.S.turn==='red'", 20)
     def red_passes():
         E(f"{D}.onBar('dice'); {D}.onBar('endturn')"); wait(f"{D}.S.turn==='blue'", 20)
     for i in range(3):
