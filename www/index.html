@@ -28,6 +28,7 @@
     <button class="mbtn" data-go="options">OPTIONS</button>
     <button class="mbtn red" data-go="quit">QUIT GAME</button>
   </div>
+  <div class="ver">v0.2.0</div>
 </div>
 
 <!-- PLAY: campaign or local -->
@@ -89,6 +90,7 @@
       <div class="namebox">Your name: <input id="nameIn" maxlength="12"></div>
       <button class="mbtn" id="hostBtn">HOST A GAME</button>
       <h3>Games waiting on your network</h3>
+      <button class="mbtn gray" id="searchBtn">&#128269; SEARCH FOR GAMES</button>
       <div id="roomList" class="roomlist"><p class="small">Looking for games...</p></div>
     </div>
     <div id="localOffline" class="hidden">
@@ -103,6 +105,7 @@
   <h2>WAITING FOR PLAYER 2...</h2>
   <div class="waitheads"><img src="img/endo.png"><img src="img/endo.png"><img src="img/endo.png"></div>
   <p>Your game is showing on every device on this Wi-Fi.<br>You are <b style="color:#3d8bff">BLUE</b>.</p>
+  <p id="hostStatus" class="hoststatus ok">&#9679; Your game is up - keep this screen open</p>
   <button class="mbtn red" id="cancelHost">CANCEL</button>
 </div>
 
@@ -138,7 +141,7 @@
       <li><b>Stone</b> - strongest. <b>Wood</b> - medium. <b>Glass</b> - weak.</li>
       <li><b>Ramps</b> - slopes. Units on them roll, just like in Angry Birds.</li>
       <li><b>Cloud</b> - floats. Blocks touching its underside, and blocks touching those, hang in the air. Knock pieces loose and whatever loses its link to the cloud falls.</li>
-      <li><b>Rope</b> - hang it under a block or stand it on one. Units can climb it and step off onto a higher platform.</li>
+      <li><b>Rope</b> - hang it under a block or stand it on one. Tie more ropes under it to make it as long as you like. Units can climb it and step off onto a higher platform.</li>
       <li><b>Door</b> - place a <b style="color:#e8b923">gold</b> door on a block, then its <b class="r">red</b> exit door. A unit stepping into the gold door comes out of the red one.</li>
       <li><b>Arrow</b> - a floating red ball. The block right in front of its point floats and moves that way. An arrow facing back on the same row sends it home again: a moving platform. Tap an arrow to flip it.</li>
       <li><b>Blue Arrow</b> - the same, but up and down: the block above or below its point becomes a lift.</li>

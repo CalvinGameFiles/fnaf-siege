@@ -18,7 +18,7 @@ The key (`android/fnafsiege.p12`) is kept OFF GitHub: the cloud build gets it fr
 Every push to `main` also puts the `www/` folder on GitHub Pages (the browser version).
 
 ## LOCAL play (same Wi-Fi)
-One player taps **Play > Local > Host a game**, and the other sees it in the list and taps it. The phones find each other over the internet (PeerJS) and then play directly. Phones on the same Wi-Fi share one public address, and that's how they spot each other's games.
+One player taps **Play > Local > Host a game**, and the other sees it in the list (or taps **SEARCH FOR GAMES**) and taps it. A hosted game reconnects by itself if the phone drops off the matchmaking server, and stays in the list even if one search is slow. The phones find each other over the internet (PeerJS) and then play directly. Phones on the same Wi-Fi share one public address, and that's how they spot each other's games.
 **Pass & Play** is two players on one device, and it works offline.
 
 ## Files
@@ -34,11 +34,11 @@ One player taps **Play > Local > Host a game**, and the other sees it in the lis
 | `server.js` | the PC launcher's tiny web server |
 | `scripts/make-heads.py` | crops the pasted pictures into `www/img` and measures the eyes for blinking |
 | `desktop/` | the Windows app (Electron): `main.js`, `build.js` |
-| `debug/*.py` | automated tests (headless Chrome): `smoke`, `mech`, `online`, `levels`, `fighters`, `round6`, `round7`, `round8`, `round9`, `round10`, `mobile` (phone sizes + finger gestures), `desktop` |
+| `debug/*.py` | automated tests (headless Chrome): `smoke`, `mech`, `online`, `levels`, `fighters`, `round6`, `round7`, `round8`, `round9`, `round10`, `round11` (tied ropes), `mobile` (phone sizes + finger gestures), `desktop` |
 
 ## Rules (short)
 - Map is 75x50. Blue land = columns 1-25, battlefield = 26-50, red land = 51-75. You can only build on your own colour. Each side's cannon sits behind its land on a low platform.
-- Blocks: stone, wood, glass, ramps, **clouds** (anything touching their underside hangs until knocked loose), **ropes** (climbable), **doors** (gold in, red out), **arrows** (the block in front of an arrow's point becomes a moving platform).
+- Blocks: stone, wood, glass, ramps, **clouds** (anything touching their underside hangs until knocked loose), **ropes** (climbable; tie ropes under each other for longer ones), **doors** (gold in, red out), **arrows** (the block in front of an arrow's point becomes a moving platform).
 - Endo 1 heart, King Freddy 2, Bonnie 2, Chica 1 (can spend a dice roll to throw her Cupcake, which becomes a unit), Foxy 1 (moves 2 squares per dice point). An attack does 1 damage.
 - Toy Bonnie 1 (can be fired from the cannon as the cannonball, and gets up where he lands), Balloon Boy 1 (reaching the far edge of the enemy land wrecks their cannon), Mangle 1 (hangs off any block bigger than one square, so she climbs walls).
 - Masks can be put on while placing units or at any moment in the battle. In Pass & Play each player has their own gold bar. A mask dropped onto a fighter that already has one replaces it; the old mask is destroyed and the shop restocks it.

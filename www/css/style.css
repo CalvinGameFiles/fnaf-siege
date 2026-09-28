@@ -251,3 +251,10 @@ canvas#game, #hud { -webkit-touch-callout: none; }
   .rarity-pager b { font-size: 20px; min-width: 140px; }
   #rarHint { margin: 2px 0; }
 }
+/* local lobby */
+#searchBtn { font-size: 16px; padding: 8px 14px; }
+#searchBtn.busy { opacity: 0.7; }
+.hoststatus { font-size: 14px; margin: 0 0 10px; }
+.hoststatus.ok { color: #5cff7a; }
+.hoststatus.bad { color: #ffb13a; }
+.ver { position: absolute; right: max(10px, env(safe-area-inset-right)); bottom: 8px; font-size: 12px; color: rgba(255,255,255,0.45); }

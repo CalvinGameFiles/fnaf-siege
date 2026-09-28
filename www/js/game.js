@@ -62,7 +62,7 @@ const Game = (() => {
   // placeable things that are not ordinary blocks
   const SPECIAL = {
     cloud: { name: 'Cloud', tip: 'Floats. Blocks touching its underside (and blocks touching those) hang from it until knocked loose.' },
-    rope: { name: 'Rope', tip: 'Hang it under a block or stand it on one. Units can climb it.' },
+    rope: { name: 'Rope', tip: 'Hang it under a block or stand it on one - or tie it under another rope to make a longer one. Units can climb it.' },
     door: { name: 'Door', tip: 'Place a GOLD door on a block, then its RED exit door. Units stepping into gold come out of red.' },
     arrow: { name: 'Arrow', tip: 'The block right in front of the arrow floats and moves that way. An arrow facing back sends it home. Tap an arrow to flip it.' },
     varrow: { name: 'Up/Down Arrow', tip: 'Blue arrow: the block right above (or below) its point floats and moves up or down - a lift. A blue arrow facing back sends it home. Tap to flip.' },
@@ -719,8 +719,10 @@ const Game = (() => {
       if (!S.doorPending[side] && L.blocks.filter(b => b.mat === 'door').length >= MAX_DOORS * 2) return `Only ${MAX_DOORS} door pairs`;
     }
     if (it.mat === 'rope') {
+      // it can also be tied under another rope (or stand on one), so ropes chain into longer ropes
       const top = occ.items.get(key(it.c, it.r - 1)), below = it.r + sh.h >= groundRow(it.c) ? { mat: 'stone' } : occ.items.get(key(it.c, it.r + sh.h));
-      if (!solidItem(top) && !isSolid((below || {}).mat)) return 'A rope must hang under a block or stand on one';
+      const rope = x => !!(x && x.mat === 'rope');
+      if (!solidItem(top) && !isSolid((below || {}).mat) && !rope(top) && !rope(below)) return 'A rope must hang under a block or another rope, or stand on a block';
     }
     return '';
   }
@@ -766,7 +768,24 @@ const Game = (() => {
       if (mate) L.blocks.splice(L.blocks.indexOf(mate), 1);
       if (S.doorPending[side] === it.id) S.doorPending[side] = null;
     }
+    dropLooseRopes(side);
     Sfx.play('back');
+  }
+  // build phase: ropes left holding on to nothing (their block or the rope above was erased) go too
+  function dropLooseRopes(side) {
+    const L = S.layouts[side];
+    const held = new Set();
+    let changed = true;
+    while (changed) {                                   // a rope is held by a block, the ground, or a rope that is held
+      changed = false;
+      const occ = occMap();
+      for (const r of L.blocks) {
+        if (r.mat !== 'rope' || held.has(r)) continue;
+        const h = SHAPES[r.shape].h, top = occ.items.get(key(r.c, r.r - 1)), below = occ.items.get(key(r.c, r.r + h));
+        if (solidItem(top) || r.r + h >= groundRow(r.c) || isSolid((below || {}).mat) || (top && held.has(top)) || (below && held.has(below))) { held.add(r); changed = true; }
+      }
+    }
+    L.blocks = L.blocks.filter(b => b.mat !== 'rope' || held.has(b));
   }
   function unitsLeft(side) {
     const u = S.layouts[side].units;
@@ -1198,12 +1217,19 @@ const Game = (() => {
     const gone = [];
     for (const s of specials) {
       if (s.mat === 'door' && !solidAt((s.c + 0.5) * CELL, (s.r + 1) * CELL + 6)) gone.push(s);
-      if (s.mat === 'rope') {
+    }
+    // ropes: held by a block above, something solid below, or a rope that is itself held (ropes tie into chains)
+    const ropes = specials.filter(s => s.mat === 'rope'), held = new Set();
+    for (let changed = true; changed;) {
+      changed = false;
+      for (const s of ropes) {
+        if (held.has(s)) continue;
         const h = SHAPES[s.shape].h, x = (s.c + 0.5) * CELL;
-        const top = solidAt(x, s.r * CELL - 6), bottom = s.r + h >= groundRow(s.c) || solidAt(x, (s.r + h) * CELL + 6);
-        if (!top && !bottom) gone.push(s);
+        const tied = ropes.some(o => held.has(o) && o.c === s.c && (o.r + SHAPES[o.shape].h === s.r || s.r + h === o.r));
+        if (tied || solidAt(x, s.r * CELL - 6) || s.r + h >= groundRow(s.c) || solidAt(x, (s.r + h) * CELL + 6)) { held.add(s); changed = true; }
       }
     }
+    for (const s of ropes) if (!held.has(s)) gone.push(s);
     for (const s of gone) {
       if (s.mat === 'door') { const m = specials.find(x => x.id === s.link); if (m && !gone.includes(m)) gone.push(m); }
     }
@@ -3357,7 +3383,7 @@ const Game = (() => {
     debug: {
       get S() { return S; }, get blocks() { return blocks; }, get clouds() { return clouds; }, get units() { return units; }, get balls() { return balls; },
       get specials() { return specials; }, get engine() { return engine; },
-      genFort, autoUnits, readyUp, doAct, moveTargets, aimVelocity, cpuAim, snapshot, applySnapshot, onBar, tap, buildTap, makeBlock, makeUnit,
+      genFort, autoUnits, readyUp, checkSpecials, doAct, moveTargets, aimVelocity, cpuAim, snapshot, applySnapshot, onBar, tap, buildTap, makeBlock, makeUnit,
       CELL, H, W, CANNON, unitCell, cam, toScreen, refocus, frameTarget, sideRect, breakTargets, setMap, get GROUND() { return GROUND; },
       frameNow: () => { update(0); draw(performance.now()); },
       saveFort, loadFort, skinOf, FORT_STYLES, BALL_POWERS, powerOf, TEAM, ignite, djReach, teleCells, dusted, kd, reviveSpot, damageUnit, cpuShoot, LEVELS,

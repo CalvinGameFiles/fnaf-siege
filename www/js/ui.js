@@ -199,52 +199,80 @@
     $('localOnline').classList.toggle('hidden', !ok);
     $('localOffline').classList.toggle('hidden', ok);
     if (!ok) return;
-    $('roomList').innerHTML = '<p class="small">Looking for games...</p>';
+    if (!Object.keys(seen).length) $('roomList').innerHTML = '<p class="small">Looking for games...</p>';
     refreshRooms();
-    roomTimer = setInterval(refreshRooms, 3500);
+    clearInterval(roomTimer);
+    roomTimer = setInterval(refreshRooms, 4000);
   }
+  // games found on this Wi-Fi. A game stays in the list until it misses 3 searches in a row,
+  // so one slow answer from a phone doesn't make it blink out.
+  const seen = {};                                      // id -> { name, miss }
   let listing = false;
   async function refreshRooms() {
     if (listing) return;
     listing = true;
+    $('searchBtn').classList.add('busy'); $('searchBtn').innerHTML = '&#128269; SEARCHING...';
     let list;
     try { list = await Net.list(); } catch (e) { list = null; }
     listing = false;
+    $('searchBtn').classList.remove('busy'); $('searchBtn').innerHTML = '&#128269; SEARCH FOR GAMES';
     if (current !== 'local') return;
     const box = $('roomList');
-    if (!list) { box.innerHTML = '<p class="small">Could not reach the internet to look for games.</p>'; return; }
-    if (!list.length) { box.innerHTML = '<p class="small">No games yet - host one, or wait for a friend to host.</p>'; return; }
+    if (!list) { if (!Object.keys(seen).length) box.innerHTML = '<p class="small">Could not reach the internet to look for games.</p>'; return; }
+    for (const id in seen) seen[id].miss++;
+    for (const r of list) seen[r.id] = { name: r.name, miss: 0 };
+    for (const id in seen) if (seen[id].miss >= 3) delete seen[id];
+    const ids = Object.keys(seen).sort();
+    if (!ids.length) { box.innerHTML = '<p class="small">No games yet - host one, or tap SEARCH when your friend has hosted.</p>'; return; }
     box.innerHTML = '';
-    for (const r of list) {
+    for (const id of ids) {
       const b = document.createElement('button');
       b.className = 'room';
-      b.textContent = `Join ${r.name}'s game`;
-      b.onclick = () => joinRoom(r.id);
+      b.textContent = `Join ${seen[id].name}'s game`;
+      b.onclick = () => joinRoom(id);
       box.appendChild(b);
     }
   }
+  $('searchBtn').onclick = () => { if (listing) return; Sfx.play('click'); refreshRooms(); };
+  // keep the screen awake while hosting or playing in a phone's browser (the app does this itself)
+  let wake = null;
+  async function stayAwake(on) {
+    try {
+      if (on && !wake && navigator.wakeLock) { wake = await navigator.wakeLock.request('screen'); wake.addEventListener('release', () => { wake = null; }); }
+      if (!on && wake) { await wake.release(); wake = null; }
+    } catch (e) { wake = null; }
+  }
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && (current === 'waiting' || Game.running)) stayAwake(true); });
   $('hostBtn').onclick = async () => {
     Sfx.play('click');
     $('hostBtn').disabled = true;
-    try { await Net.host(Store.get('name')); show('waiting'); }
+    try { await Net.host(Store.get('name')); show('waiting'); hostStatus(true); stayAwake(true); }
     catch (e) { toast(e.message && e.message.length < 80 ? e.message : 'Could not start a game - check the internet'); }
     $('hostBtn').disabled = false;
   };
-  $('cancelHost').onclick = () => { Sfx.play('back'); Net.close(); show('local'); };
+  function hostStatus(ok) {
+    const el = $('hostStatus');
+    el.className = 'hoststatus ' + (ok ? 'ok' : 'bad');
+    el.innerHTML = ok ? '&#9679; Your game is up - keep this screen open' : '&#9679; Reconnecting your game...';
+  }
+  $('cancelHost').onclick = () => { Sfx.play('back'); Net.close(); stayAwake(false); show('local'); };
   async function joinRoom(id) {
     Sfx.play('click');
     clearInterval(roomTimer);
     try { await Net.join(id, Store.get('name')); } catch (e) { toast(e.message || 'Could not join'); openLocal(); return; }
+    delete seen[id];
+    stayAwake(true);
     startGame({ mode: 'online', mySide: 'red' });
   }
   Net.onMessage = m => {
+    if (m.type === 'hoststatus') { if (current === 'waiting') hostStatus(m.ok); return; }
     if (m.type === 'joined' && current === 'waiting') { startGame({ mode: 'online', mySide: 'blue' }); return; }
     if (Game.running) Game.netMsg(m);
   };
   $('hotseatBtn').onclick = () => { Sfx.play('click'); startGame({ mode: 'hotseat' }); };
 
   function startGame(opts) { hideAll(); Game.start(opts); }
-  Game.onExit = wasCampaign => show(wasCampaign ? 'campaign' : 'menu');
+  Game.onExit = wasCampaign => { stayAwake(false); show(wasCampaign ? 'campaign' : 'menu'); };
 
   // the phone's back button (inside the app)
   const BACK = { mode: 'menu', campaign: 'mode', shop: 'campaign', local: 'mode', options: 'menu', guide: 'options', quit: 'menu' };

@@ -59,6 +59,20 @@ try:
     check("B finds A's game on the network", until(lambda: "HOSTY" in (B.eval("document.getElementById('roomList').textContent") or ""), 30),
           B.eval("document.getElementById('roomList').textContent"))
     shot(B, "20-local-list")
+    # the SEARCH button runs a search right away
+    B.eval("document.getElementById('searchBtn').click()"); pump(0.2)
+    check("SEARCH FOR GAMES searches", "SEARCHING" in B.eval("document.getElementById('searchBtn').textContent"))
+    check("...and the game is still listed after it", until(lambda: "SEARCH FOR GAMES" in B.eval("document.getElementById('searchBtn').textContent") and "HOSTY" in B.eval("document.getElementById('roomList').textContent"), 15))
+    # the host drops off the matchmaking server (like a phone's Wi-Fi blipping): it reconnects by itself
+    A.eval("Net._drop()")
+    check("the host reconnects by itself after dropping off", until(lambda: A.eval("Net._peer && Net._peer.open && !Net._peer.disconnected") is True, 20))
+    check("...its waiting screen says the game is up", until(lambda: "is up" in A.eval("document.getElementById('hostStatus').textContent"), 10))
+    # the host's game name is lost completely: it hosts again
+    A.eval("Net._peer.destroy()")
+    check("a lost game is hosted again automatically", until(lambda: A.eval("!!(Net._peer && Net._peer.open && !Net._peer.destroyed)") is True, 25))
+    pump(3)
+    check("B still sees A's game after all that", until(lambda: "HOSTY" in B.eval("document.getElementById('roomList').textContent"), 30),
+          B.eval("document.getElementById('roomList').textContent"))
     B.eval("document.querySelector('.room').click()")
     check("both in a match", until(lambda: A.eval("Game.running") and B.eval("Game.running"), 20))
     check("A is blue, B is red", A.eval(f"{D}.S.mySide") == "blue" and B.eval(f"{D}.S.mySide") == "red")
