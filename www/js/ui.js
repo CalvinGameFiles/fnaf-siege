@@ -319,5 +319,10 @@
   }
   Game.init();
   show('menu');
+  // the app was closed in the middle of a match: that's leaving it, so it's a loss
+  if (Store.get('activeMatch')) {
+    Store.reward('loss'); Store.set('activeMatch', false);
+    setTimeout(() => toast('You left a match last time - that counts as a loss (-10 coins)'), 600);
+  }
   window.UI = { show, toast };
 })();

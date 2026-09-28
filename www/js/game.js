@@ -31,20 +31,49 @@ const Game = (() => {
 
   // ------------------------------------------------------------------ maps
   // GROUND[c] = the first row of solid ground in column c (50 = the flat floor at the bottom of the grid)
-  const MAPS = { field: { name: 'The Field' }, desert: { name: 'Red Desert' } };
+  const MAPS = { field: { name: 'The Field' }, desert: { name: 'Red Desert' }, snow: { name: 'Snowy Hill' }, jungle: { name: 'The Jungle' },
+    wasteland: { name: 'Volcano Wasteland' }, towers: { name: 'The Towers' } };
   const PLATEAU = 8;                       // how many squares the desert's high side is raised
+  const MID = (BLUE_END + RED_START - 1) / 2;   // the battlefield's middle column (37)
   let GROUND = new Array(COLS).fill(ROWS), MAPK = 'field', HIGH = null;
+  // the Jungle's trees: a canopy you can stand and build on, a trunk and vines to climb
+  let TREES = [], MAPSOLID = new Set(), MAPROPES = [];
+  // the Towers: no ground at all, just a sea of clouds; each side builds on a 15-wide concrete base
+  const PLATE = { blue: [5, 19], red: [COLS - 20, COLS - 6] }, VOID_ROW = ROWS + 10;
+  const onPlate = (c, side) => c >= PLATE[side][0] && c <= PLATE[side][1];
   const groundRow = c => GROUND[clamp(c, 0, COLS - 1)];
-  const landFloor = s => GROUND[s === 'blue' ? 0 : COLS - 1];     // ground row across a side's own land
+  const landFloor = s => MAPK === 'towers' ? ROWS - 1 : GROUND[s === 'blue' ? 0 : COLS - 1];     // ground row across a side's own land
   function setMap(map, high = null) {
     MAPK = map; HIGH = map === 'desert' ? high || 'red' : null;
     GROUND = new Array(COLS).fill(ROWS);
+    TREES = []; MAPSOLID = new Set(); MAPROPES = [];
     if (HIGH) for (let c = 0; c < COLS; c++) {
       // the plateau side, and a staircase slope through the battlefield (one square up every two columns)
       const d = HIGH === 'red' ? c - (RED_START - 20) : (COLS - 1 - c) - (RED_START - 20);
       GROUND[c] = ROWS - clamp(Math.ceil(d / 2), 0, PLATEAU);
     }
+    // Snowy Hill: both sides on the flat, a hill up and over through the battlefield
+    if (map === 'snow') for (let c = BLUE_END; c < RED_START; c++) GROUND[c] = ROWS - clamp(7 - Math.ceil(Math.abs(c - MID) / 2), 0, 7);
+    // Volcano Wasteland: both sides on the flat, a pit down and up again through the battlefield
+    if (map === 'wasteland') for (let c = 0; c < COLS; c++) GROUND[c] = ROWS - clamp(Math.ceil(Math.abs(c - MID) / 2), 0, 6);
+    if (map === 'jungle') {
+      TREES = [{ c: MID - 8, top: ROWS - 12 }, { c: MID, top: ROWS - 16 }, { c: MID + 8, top: ROWS - 12 }];
+      // a 5-wide leafy canopy with a gap in the middle where the trunk comes up through it:
+      // climb the trunk up into the gap, then step off sideways onto the leaves
+      for (const t of TREES) {
+        for (const dc of [-2, -1, 1, 2]) MAPSOLID.add(key(t.c + dc, t.top));
+        MAPROPES.push({ c: t.c, r0: t.top, r1: ROWS - 1, trunk: true }, { c: t.c - 2, r0: t.top + 1, r1: t.top + 5 }, { c: t.c + 2, r0: t.top + 1, r1: t.top + 5 });
+      }
+    }
+    if (map === 'towers') for (let c = 0; c < COLS; c++) GROUND[c] = onPlate(c, 'blue') || onPlate(c, 'red') ? ROWS - 1 : VOID_ROW;
     for (const s of ['blue', 'red']) { PLAT[s].y = landFloor(s) * CELL; CANNON[s].y = PLAT[s].y - PLAT_H - CELL * 0.62; }
+  }
+  const mapSolid = (c, r) => MAPSOLID.has(key(c, r));
+  const mapRope = (c, r) => MAPROPES.find(v => v.c === c && r >= v.r0 && r <= v.r1) || null;
+  // the Towers' concrete: gone from a column when its concrete is smashed
+  function towerGround() {
+    if (MAPK !== 'towers') return;
+    for (let c = 0; c < COLS; c++) GROUND[c] = blocks.some(b => !b.gm.dead && b.gm.mat === 'concrete' && Math.floor(b.position.x / CELL) === c) ? ROWS - 1 : VOID_ROW;
   }
   setMap('field');
 
@@ -57,6 +86,8 @@ const Game = (() => {
       fill: '#a8733d', edge: '#55330f', chip: ['#b98246', '#7d5025', '#d19a5c'] },
     plastic: { name: 'Pink Plastic', hp: 2, density: 0.0012, friction: 0.5, pierce: 1, fall: 0, dice: 1, slow: 0.9, snd: 'glass',
       fill: '#ff6ecf', edge: '#a8307e', chip: ['#ff9ae0', '#ff6ecf', '#d04aa8'] },
+    concrete: { name: 'Concrete', hp: 20, density: 0.006, friction: 0.9, pierce: 9, fall: 3, dice: 99, slow: 0.4, snd: 'stone',
+      fill: '#9a9ea6', edge: '#55585e', chip: ['#a8acb4', '#8a8e96', '#c0c4ca'] },
     glass: { name: 'Glass', hp: 2, density: 0.0012, friction: 0.35, pierce: 1, fall: 0, dice: 1, slow: 0.9, snd: 'glass',
       fill: 'rgba(165,225,255,0.42)', edge: '#e3f7ff', chip: ['#dff5ff', '#a6dcf7', '#ffffff'] },
   };
@@ -73,7 +104,7 @@ const Game = (() => {
     s11: { w: 1, h: 1 }, s21: { w: 2, h: 1 }, s12: { w: 1, h: 2 }, s31: { w: 3, h: 1 }, s13: { w: 1, h: 3 },
     s41: { w: 4, h: 1 }, s14: { w: 1, h: 4 }, s22: { w: 2, h: 2 }, s33: { w: 3, h: 3 },
     rr1: { w: 1, h: 1, tri: 'R' }, rl1: { w: 1, h: 1, tri: 'L' }, rr2: { w: 2, h: 2, tri: 'R' }, rl2: { w: 2, h: 2, tri: 'L' },
-    c21: { w: 2, h: 1, for: 'cloud' }, c31: { w: 3, h: 1, for: 'cloud' }, c42: { w: 4, h: 2, for: 'cloud' }, c62: { w: 6, h: 2, for: 'cloud' },
+    c11: { w: 1, h: 1, for: 'cloud' }, c21: { w: 2, h: 1, for: 'cloud' }, c31: { w: 3, h: 1, for: 'cloud' }, c42: { w: 4, h: 2, for: 'cloud' }, c62: { w: 6, h: 2, for: 'cloud' },
     r2: { w: 1, h: 2, for: 'rope' }, r3: { w: 1, h: 3, for: 'rope' }, r4: { w: 1, h: 4, for: 'rope' }, r6: { w: 1, h: 6, for: 'rope' },
     d1: { w: 1, h: 1, for: 'door' }, a1: { w: 1, h: 1, for: 'arrow' }, v1: { w: 1, h: 1, for: 'varrow' },
   };
@@ -264,7 +295,7 @@ const Game = (() => {
   const MAGIC_PER_TURN = 3;
   // when a unit is inside the ENEMY's land it can smash an enemy block next to it for this many dice points
   // (stone is the easiest to break into, so an all-stone fortress isn't the answer to everything)
-  const BREAK_COST = { glass: 3, wood: 2, stone: 1, plastic: 1 };
+  const BREAK_COST = { glass: 3, wood: 2, stone: 1, plastic: 1, concrete: 2 };
   // collision groups: a side's own cannonballs fly straight through everything that belongs to that side
   const CAT = { cloud: 0x0004, blue: 0x0010, red: 0x0020 };
   function setOwner(b, side) {
@@ -296,6 +327,7 @@ const Game = (() => {
       cherry: { base: '#eba5b2', grain: '160,70,90', edge: '#9a5060' },
     },
     plastic: { default: { base: '#ff6ecf', fill: '#ff6ecf', edge: '#a8307e' } },
+    concrete: { default: { base: '#9a9ea6', fill: '#9a9ea6', edge: '#55585e' } },
     glass: {
       default: { fill: 'rgba(165,225,255,0.42)', edge: '#e3f7ff' },
       red: { fill: 'rgba(255,80,80,0.45)', edge: '#ffd0d0' },
@@ -721,7 +753,9 @@ const Game = (() => {
     if (L.blocks.length >= MAX_ITEMS) return `Block limit reached (${MAX_ITEMS})`;
     for (const [c, r] of itemCells(it)) {
       if (c < 0 || c >= COLS || r < 0 || zoneOf(c) !== side) return 'Only on your own colour';
-      if (r >= groundRow(c)) return "That's solid ground";
+      if (r >= groundRow(c)) return MAPK === 'towers' ? "That's the concrete base" : "That's solid ground";
+      if (mapSolid(c, r) || mapRope(c, r)) return "That's a tree";
+      if (MAPK === 'towers' && !onPlate(c, side)) return 'On the Towers you build on your concrete base';
       if (occ.items.has(key(c, r)) || (occ.units.has(key(c, r)) && it.mat !== 'door' && it.mat !== 'rope')) return 'That space is taken';
     }
     const sh = SHAPES[it.shape];
@@ -766,7 +800,8 @@ const Game = (() => {
       }
       const left = unitsLeft(side)[S.unitTool];
       if (left <= 0) { Sfx.play('bad'); toast(S.unitTool === 'king' ? 'Freddy is already placed' : 'All 9 Endos are placed'); return; }
-      if (here || (item && item.mat !== 'door' && item.mat !== 'rope') || zoneOf(c) !== side || r < 0 || r >= groundRow(c)) { Sfx.play('bad'); return; }
+      if (here || (item && item.mat !== 'door' && item.mat !== 'rope') || zoneOf(c) !== side || r < 0 || r >= groundRow(c) || mapSolid(c, r)
+        || (MAPK === 'towers' && !onPlate(c, side))) { Sfx.play('bad'); return; }
       L.units.push({ id: nextId++, kind: S.unitTool, c, r }); Sfx.play('place');
       if (unitsLeft(side)[S.unitTool] === 0 && S.unitTool === 'king') S.unitTool = 'endo';
     }
@@ -806,8 +841,11 @@ const Game = (() => {
   // Ready-made fortresses: the "Auto Fort" button (tap again for the next style) and every campaign level
   // (seeded, so a level always looks the same). Coordinates are written for BLUE's land (columns 0-24) and mirrored for red.
   const FORT_STYLES = ['pyramid', 'bunker', 'hall', 'village', 'sky', 'skyline', 'castle', 'islands', 'ziggurat', 'stilts'];
+  const TOWER_STYLES = ['keep', 'twin'];              // the Towers' 15-wide concrete bases get forts built to fit them
+  const fortStyles = () => MAPK === 'towers' ? TOWER_STYLES : FORT_STYLES;
   const FORT_NAMES = { pyramid: 'Pyramid', bunker: 'Bunker', hall: 'Great Hall', village: 'Village', sky: 'Sky Fort',
-    skyline: 'Skyline', castle: 'Castle', islands: 'Floating Islands', ziggurat: 'Ziggurat', stilts: 'Stilt Village' };
+    skyline: 'Skyline', castle: 'Castle', islands: 'Floating Islands', ziggurat: 'Ziggurat', stilts: 'Stilt Village',
+    keep: 'Tower Keep', twin: 'Twin Towers' };
   function genFort(side, o = {}) {
     const rnd = o.rng || Math.random, pk = a => a[Math.floor(rnd() * a.length)];
     const L = { blocks: [], units: [] }, occ = new Set();
@@ -820,11 +858,13 @@ const Game = (() => {
       const it = { id: nextId++, shape: s, mat, c: cc, r, ...extra };
       if (side === 'red' && it.dir) it.dir = -it.dir;
       const cells = itemCells(it);
-      if (cells.some(([x, y]) => occ.has(key(x, y)) || zoneOf(x) !== side || y < 0 || y >= groundRow(x))) return null;
+      if (cells.some(([x, y]) => occ.has(key(x, y)) || zoneOf(x) !== side || y < 0 || y >= groundRow(x) || mapSolid(x, y) || mapRope(x, y)
+        || (MAPK === 'towers' && !onPlate(x, side)))) return null;
       cells.forEach(([x, y]) => occ.add(key(x, y)));
       L.blocks.push(it); return it;
     };
-    const style = o.style || 'pyramid';
+    let style = o.style || 'pyramid';
+    if (MAPK === 'towers' && !TOWER_STYLES.includes(style)) style = TOWER_STYLES[FORT_STYLES.indexOf(style) % 2 === 1 ? 1 : 0];
     const stone = o.stone != null ? o.stone : 0.35;
     const mat = () => (rnd() < stone ? 'stone' : 'wood');
     const F = landFloor(side);                       // the side's ground row (the desert plateau is higher)
@@ -919,6 +959,18 @@ const Game = (() => {
       }
       put('r6', 'rope', 8, F - 6);
       kingSpot = [3, F - 21];
+    } else if (style === 'keep') {                  // the Towers: a stepped keep that fits the 15-wide base (columns 5-19)
+      [[5, 9, 13], [7, 11], [9]].forEach((xs, lv) => xs.forEach(x => spots.push(...room(x, F - lv * 4, lv === 0 ? 'stone' : mat(), lv === 2 ? 'stone' : pk(['stone', 'wood'])))));
+      put('rr1', 'wood', 9, F - 13); put('rl1', 'wood', 12, F - 13);
+      put('rr2', 'stone', 17, F - 2);
+      kingSpot = spots.splice(spots.length - 2, 1)[0];
+    } else if (style === 'twin') {                   // the Towers: two stacked towers with a cloud bridge between them
+      for (const x of [5, 13]) { let fl = F; for (let k = 0; k < 3; k++) { spots.push(...room(x, fl, 'stone', k === 2 ? 'stone' : pk(['stone', 'wood']))); fl -= 4; } }
+      put('c31', 'cloud', 9, F - 12); put('s11', 'glass', 10, F - 13);
+      spots.push([9, F - 13], [11, F - 13]);
+      put('s12', 'stone', 9, F - 2); put('s12', 'stone', 12, F - 2); put('s41', 'wood', 9, F - 3);
+      spots.push([10, F - 1], [11, F - 1]);
+      kingSpot = spots.splice(4, 1)[0];
     } else if (style === 'skyline') {                // five towers of stacked rooms, the tallest crowned by a floating cloud
       const hts = [2, 4, 6, 4, 2];
       [0, 5, 10, 15, 20].forEach((x, i) => {
@@ -985,8 +1037,35 @@ const Game = (() => {
       kingSpot = spots.splice(4, 1)[0];             // the first tall hut
     }
     // not enough rooms? the rest stand on free ground in the land
-    for (let c = 0; c < BLUE_END && spots.length < SOLDIERS; c++)
+    // (on the Towers, units only stand on the concrete base)
+    const spotOk = ([c, r]) => !mapSolid(real(c), r) && (MAPK !== 'towers' || onPlate(real(c), side));
+    spots = spots.filter(spotOk);
+    if (!kingSpot || !spotOk(kingSpot)) kingSpot = spots.shift() || [PLATE.blue[0] + 7, F - 1];
+    for (let c = 0; c < BLUE_END && spots.length < SOLDIERS; c++) if (spotOk([c, F - 1]))
       if (!occ.has(key(real(c), F - 1)) && !spots.some(s => s[0] === c && s[1] === F - 1) && !(kingSpot[0] === c && kingSpot[1] === F - 1)) spots.push([c, F - 1]);
+    if (MAPK === 'towers') {                         // drop anything not standing on the base (or on something that does)
+      const held = new Set(), at = new Map();
+      for (const it of L.blocks) for (const [x, y] of itemCells(it)) at.set(key(x, y), it);
+      for (let changed = true; changed;) {
+        changed = false;
+        for (const it of L.blocks) {
+          if (held.has(it)) continue;
+          const cells = itemCells(it);
+          const ok = it.mat === 'cloud' || cells.some(([x, y]) => {
+            if (y + 1 >= groundRow(x)) return true;                            // on the concrete
+            const b = at.get(key(x, y + 1)), a = at.get(key(x, y - 1));
+            return (b && b !== it && held.has(b)) || (a && a !== it && held.has(a) && a.mat === 'cloud');
+          });
+          if (ok) { held.add(it); changed = true; }
+        }
+      }
+      L.blocks = L.blocks.filter(it => held.has(it));
+      const floorAt = ([c, r]) => { const x = real(c); return r + 1 >= groundRow(x) || (at.get(key(x, r + 1)) && held.has(at.get(key(x, r + 1)))) || (at.get(key(x, r + 1)) || {}).mat === 'cloud'; };
+      spots = spots.filter(floorAt);
+      if (!floorAt(kingSpot)) kingSpot = spots.shift() || [PLATE.blue[0] + 7, F - 1];
+      for (let c = PLATE.blue[0]; c <= PLATE.blue[1] && spots.length < SOLDIERS; c++)
+        if (!at.has(key(real(c), F - 1)) && !spots.some(s => s[0] === c && s[1] === F - 1) && !(kingSpot[0] === c && kingSpot[1] === F - 1)) spots.push([c, F - 1]);
+    }
     L.units.push({ id: nextId++, kind: 'king', c: real(kingSpot[0]), r: kingSpot[1], ...(o.king ? { up: o.king } : {}) });
     const kinds = (o.kinds || []).slice();
     spots.slice(0, SOLDIERS).forEach(s => L.units.push({ id: nextId++, kind: kinds.shift() || 'endo', c: real(s[0]), r: s[1] }));
@@ -1043,7 +1122,7 @@ const Game = (() => {
       if (zoneOf(c) !== side) continue;
       for (let r = 0; r < ROWS; r++) {
         const it = occ.items.get(key(c, r));
-        if (r >= groundRow(c)) continue;
+        if (r >= groundRow(c) || mapSolid(c, r) || (MAPK === 'towers' && !onPlate(c, side))) continue;
         if (occ.units.has(key(c, r)) || (it && it.mat !== 'door' && it.mat !== 'rope')) continue;
         const below = occ.items.get(key(c, r + 1));
         if (below && solidItem(below)) free.push([c, r, 3]);
@@ -1066,7 +1145,7 @@ const Game = (() => {
     engine.gravity.y = 1;
     const st = { isStatic: true, friction: 0.9, label: 'ground' };
     Composite.add(engine.world, [
-      Bodies.rectangle(W / 2, H + 200, WORLD_X1 - WORLD_X0 + 1200, 400, st),
+      Bodies.rectangle(W / 2, H + 200 + (MAPK === 'towers' ? 5000 : 0), WORLD_X1 - WORLD_X0 + 1200, 400, st),   // (the Towers have no floor)
       Bodies.rectangle(WORLD_X0 - 100, H / 2 - 1500, 200, H + 3000, { isStatic: true, friction: 0.2, label: 'wall' }),
       Bodies.rectangle(WORLD_X1 + 100, H / 2 - 1500, 200, H + 3000, { isStatic: true, friction: 0.2, label: 'wall' }),
       Bodies.rectangle((PLAT.blue.x0 + PLAT.blue.x1) / 2, PLAT.blue.y - PLAT_H / 2, PLAT.blue.x1 - PLAT.blue.x0, PLAT_H, st),
@@ -1075,7 +1154,7 @@ const Game = (() => {
     // raised ground (the desert plateau and its staircase): one static slab per run of equal-height columns,
     // stretched past the map edge under the cannon
     terrain = [];
-    for (let c = 0; c < COLS;) {
+    for (let c = 0; c < COLS && MAPK !== 'towers';) {
       let e = c;
       while (e + 1 < COLS && GROUND[e + 1] === GROUND[c]) e++;
       if (GROUND[c] < ROWS) {
@@ -1084,6 +1163,7 @@ const Game = (() => {
       }
       c = e + 1;
     }
+    for (const t of TREES) for (const dc of [-1.5, 1.5]) terrain.push(Bodies.rectangle((t.c + 0.5 + dc) * CELL, (t.top + 0.5) * CELL, CELL * 2, CELL, { isStatic: true, friction: 0.9, label: 'terrain' }));
     Composite.add(engine.world, terrain);
     Events.on(engine, 'collisionStart', ev => { for (const p of ev.pairs) contact(p); });
     blocks = []; clouds = []; units = []; balls = []; specials = []; parts = []; removeQ = []; riding = new Set();
@@ -1214,7 +1294,7 @@ const Game = (() => {
   }
 
   // --- specials (doors, ropes, arrows) live on the grid, not in the physics world
-  const ropeAt = (c, r) => specials.find(s => s.mat === 'rope' && s.c === c && r >= s.r && r < s.r + SHAPES[s.shape].h) || null;
+  const ropeAt = (c, r) => specials.find(s => s.mat === 'rope' && s.c === c && r >= s.r && r < s.r + SHAPES[s.shape].h) || mapRope(c, r);
   const doorAt = (c, r) => specials.find(s => s.mat === 'door' && s.c === c && s.r === r) || null;
   const arrowAt = (c, r) => specials.find(s => (s.mat === 'arrow' || s.mat === 'varrow') && s.c === c && s.r === r) || null;
   function setHang(u, on) {
@@ -1305,6 +1385,10 @@ const Game = (() => {
       else if (stuck.has(it.id)) { b.gm.stuck = true; Body.setStatic(b, true); }
       else if (grounded.has(it)) Sleeping.set(b, true);
     }
+    if (MAPK === 'towers') for (const s of ['blue', 'red']) for (let c = PLATE[s][0]; c <= PLATE[s][1]; c++) {
+      const b = makeBlock('s11', 'concrete', (c + 0.5) * CELL, (ROWS - 0.5) * CELL);
+      Body.setStatic(b, true); setOwner(b, s);
+    }
     specials = items.filter(it => it.mat === 'door' || it.mat === 'rope' || it.mat === 'arrow' || it.mat === 'varrow')
       .map(it => ({ id: it.id, mat: it.mat, shape: it.shape, c: it.c, r: it.r, color: it.color, link: it.link, dir: it.dir, side: it.side }));
     for (const side of ['blue', 'red'])
@@ -1330,6 +1414,7 @@ const Game = (() => {
     const g = b.gm;
     if (g.dead) return;
     removeBody(b);
+    if (g.mat === 'concrete') towerGround();
     if (S.shotLog) S.shotLog.blocks++;
     Sfx.play(MAT[g.mat].snd);
     const n = Math.min(14, 4 + Math.round(area(g.shape) * 2));
@@ -1417,7 +1502,31 @@ const Game = (() => {
     if (blk.position.y > u.position.y - CELL * 0.25) return;           // must come from above
     if (blk.velocity.y - u.velocity.y < 2) return;                       // and actually be falling
     u.gm.crushCD = 0.5;
+    // out in the battlefield an ENEMY's block never crushes a unit: it shoves it out of the way instead
+    if (inField(u) && blk.gm.side && blk.gm.side !== u.gm.side) { nudgeUnit(u); return; }
     damageUnit(u, dmg, 'crush');
+  }
+  // move a unit to the nearest free square (standing on something if possible)
+  function nudgeUnit(u) {
+    if (u.isStatic) return;
+    const { c, r } = unitCell(u);
+    let best = null;
+    for (let d = 1; d <= 4 && !best; d++) {
+      let loose = null;
+      for (let dr = -d; dr <= d; dr++) for (let dc = -d; dc <= d; dc++) {
+        if (Math.max(Math.abs(dc), Math.abs(dr)) !== d || best) continue;
+        const nc = c + dc, nr = r + dr;
+        if (nr >= ROWS || !cellFree(nc, nr, u)) continue;
+        if (cellSupported(nc, nr, false, u)) best = { c: nc, r: nr }; else if (!loose) loose = { c: nc, r: nr };
+      }
+      if (!best && loose) best = loose;
+    }
+    if (!best) return;
+    poof(u.position.x, u.position.y);
+    Body.setPosition(u, { x: (best.c + 0.5) * CELL, y: (best.r + 0.5) * CELL - 1 });
+    Body.setVelocity(u, { x: 0, y: 0 }); Body.setAngularVelocity(u, 0);
+    Sleeping.set(u, false);
+    u.gm.hop = 0.25;
   }
   function ballHit(ball, o, p) {
     const g = ball.gm, og = o.gm;
@@ -2030,6 +2139,7 @@ const Game = (() => {
   function solidAt(x, y) {
     for (const b of blocks) if (!b.gm.dead && Bounds.contains(b.bounds, { x, y }) && Vertices.contains(b.vertices, { x, y })) return b;
     for (const b of clouds) if (Bounds.contains(b.bounds, { x, y })) return b;
+    if (mapSolid(Math.floor(x / CELL), Math.floor(y / CELL))) return GROUND_HIT;         // a jungle tree's canopy
     if (y >= groundRow(Math.floor(x / CELL)) * CELL) return GROUND_HIT;
     return null;
   }
@@ -2226,7 +2336,7 @@ const Game = (() => {
   // enemy blocks a unit standing in the ENEMY's land can smash: [{b, cost}]
   function breakTargets(u) {
     const { c, r } = unitCell(u), foe = other(u.gm.side), out = [];
-    if (zoneOf(c) !== foe) return out;
+    if (zoneOf(c) === u.gm.side) return out;         // in the battlefield or the enemy's land
     for (let dc = -1; dc <= 1; dc++) for (let dr = -1; dr <= 1; dr++) {
       if (!dc && !dr) continue;
       const x = (c + dc + 0.5) * CELL, y = (r + dr + 0.5) * CELL;
@@ -2256,12 +2366,19 @@ const Game = (() => {
     afterPoints();
   }
   // mid-game blocks go ONLY in the battlefield (never in your own land)
+  const CLOUD_COST = 2;
   function canRepair(mat, c, r) {
     if (zoneOf(c) !== 'field') return false;
+    if (mat === 'cloud') return MAPK === 'towers' && S.pts >= CLOUD_COST && cellFree(c, r, null, true) && !mapSolid(c, r);
     return S.pts >= MAT[mat].dice && cellFree(c, r, null, true);
   }
   function repair(mat, c, r) {
     if (!canRepair(mat, c, r)) return;
+    if (mat === 'cloud') {                            // the Towers: a little cloud to stand and build on
+      S.pts -= CLOUD_COST;
+      makeCloud('c11', (c + 0.5) * CELL, (r + 0.5) * CELL);
+      Sfx.play('place'); afterPoints(); return;
+    }
     S.pts -= MAT[mat].dice;
     setOwner(makeBlock('s11', mat, (c + 0.5) * CELL, (r + 0.5) * CELL), S.turn);
     Sfx.play('place');
@@ -2313,6 +2430,7 @@ const Game = (() => {
   }
   function finish(res) {
     S.result = res; S.act = 'over';
+    Store.set('activeMatch', false);
     const me = S.mode === 'online' ? S.mySide : 'blue';
     const outcome = res === 'draw' ? 'draw' : res === me ? 'win' : 'loss';
     const coins = Store.reward(outcome);
@@ -2348,7 +2466,7 @@ const Game = (() => {
       const b = makeBlock(shape, mat, x, y, a, id, hp);
       Object.assign(b.gm, { adj, mover, maxis, stuck: !!stuck }); setOwner(b, side);
       if (mat === 'plastic') { b.gm.max = MAT.plastic.hp * Math.sqrt(area(shape)); b.gm.hp = Math.min(b.gm.hp, b.gm.max); }
-      if (stuck || mover) Body.setStatic(b, true); else Sleeping.set(b, true);
+      if (stuck || mover || mat === 'concrete') Body.setStatic(b, true); else Sleeping.set(b, true);
     }
     for (const [id, side, kind, x, y, a, hp, hang, threw, dig, up, ab, mhp, blessed, spent, frozenUntil] of s.units) {
       const u = makeUnit(side, kind, x, y, id, hp, a, up, ab, mhp);
@@ -2358,6 +2476,7 @@ const Game = (() => {
     specials = s.specials.map(x => ({ ...x }));
     if (s.tunnels) S.tunnels = s.tunnels.slice();
     if (s.graves) S.graves = JSON.parse(JSON.stringify(s.graves));
+    towerGround();
   }
 
   // ------------------------------------------------------------------ simulation step
@@ -2374,6 +2493,10 @@ const Game = (() => {
     // cookies fly in a straight line: cancel gravity on them
     for (const b of balls) if (b.gm.shot === 'cookie') b.force.y -= b.mass * engine.gravity.y * engine.gravity.scale;
     for (const b of blocks) if (b.gm.mover && !b.gm.dead) moveMover(b);
+    if (MAPK === 'towers') {                          // fell off into the clouds below: gone
+      for (const u of units) if (!u.gm.dead && u.position.y > H + CELL * 2) { toast(`${kd(u).name} fell into the clouds!`); killUnit(u); }
+      for (const b of blocks) if (!b.gm.dead && b.position.y > H + CELL * 2) removeBody(b);
+    }
     Engine.update(engine, STEP);
     flushRemovals();
     if (S.recheck) recheckStuck();
@@ -2460,16 +2583,22 @@ const Game = (() => {
   function draw(now) {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     const sky = ctx.createLinearGradient(0, 0, 0, SH);
-    if (MAPK === 'desert') { sky.addColorStop(0, '#12070d'); sky.addColorStop(0.55, '#4a1a1c'); sky.addColorStop(1, '#a4452a'); }
-    else { sky.addColorStop(0, '#07060f'); sky.addColorStop(0.6, '#161232'); sky.addColorStop(1, '#2a1d3c'); }
+    const SKY = { desert: ['#12070d', '#4a1a1c', '#a4452a'], snow: ['#0c1630', '#2a4470', '#7d9cc4'], jungle: ['#04120a', '#0e2a18', '#24462a'],
+      wasteland: ['#140806', '#3a120a', '#7a2a10'], towers: ['#0a0f2a', '#28336a', '#7a86c0'] }[MAPK] || ['#07060f', '#161232', '#2a1d3c'];
+    sky.addColorStop(0, SKY[0]); sky.addColorStop(0.58, SKY[1]); sky.addColorStop(1, SKY[2]);
     ctx.fillStyle = sky; ctx.fillRect(0, 0, SW, SH);
+    if (MAPK === 'wasteland') drawVolcanoes(now);
     for (const s of STARS) {
       ctx.globalAlpha = 0.4 + 0.4 * Math.sin(now / 700 + s.t);
       ctx.fillStyle = '#fff'; ctx.fillRect(((s.x * SW - cam.x * cam.z * 0.05) % SW + SW) % SW, s.y * SH, s.s, s.s);
     }
     ctx.globalAlpha = 1;
     ctx.fillStyle = 'rgba(255,250,220,0.9)'; ctx.beginPath(); ctx.arc(SW * 0.82, SH * 0.16, 26, 0, 7); ctx.fill();
-    ctx.fillStyle = MAPK === 'desert' ? '#24100f' : '#161232'; ctx.beginPath(); ctx.arc(SW * 0.82 + 10, SH * 0.16 - 6, 22, 0, 7); ctx.fill();
+    ctx.fillStyle = SKY[0]; ctx.beginPath(); ctx.arc(SW * 0.82 + 10, SH * 0.16 - 6, 22, 0, 7); ctx.fill();
+    if (MAPK === 'snow') {                            // falling snow
+      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      for (const s of STARS) { const y = ((s.y * SH + now * 0.03 * (0.6 + s.s)) % SH), x = ((s.x * SW + Math.sin(now / 900 + s.t) * 20) % SW + SW) % SW; ctx.beginPath(); ctx.arc(x, y, s.s * 1.3, 0, 7); ctx.fill(); }
+    }
 
     const sx = cam.shake ? rand(-cam.shake, cam.shake) : 0, sy = cam.shake ? rand(-cam.shake, cam.shake) : 0;
     const z = cam.z * dpr;
@@ -2483,7 +2612,10 @@ const Game = (() => {
       for (const s of specials) drawSpecial(s, now);
       for (const b of blocks) {
         drawBlock(b.position.x, b.position.y, b.angle, b.gm.shape, b.gm.mat, b.gm.hp / b.gm.max, b.gm.seed, now, 1, b.gm.stuck, b.gm.side);
-        if (b.gm.side && zoneOf(Math.floor(b.position.x / CELL)) !== b.gm.side) {     // outside its owner's land: team colour shows whose it is
+        if (b.gm.mat === 'concrete' && b.gm.side) {    // the Towers' concrete base, in its team's colour
+          ctx.save(); ctx.translate(b.position.x, b.position.y); ctx.rotate(b.angle); blockPath(b.gm.shape);
+          ctx.fillStyle = `rgba(${TEAM[b.gm.side].rgb},0.55)`; ctx.fill(); ctx.lineWidth = 2.5; ctx.strokeStyle = `rgba(0,0,0,0.5)`; ctx.stroke(); ctx.restore();
+        } else if (b.gm.side && zoneOf(Math.floor(b.position.x / CELL)) !== b.gm.side) {     // outside its owner's land: team colour shows whose it is
           ctx.save(); ctx.translate(b.position.x, b.position.y); ctx.rotate(b.angle); blockPath(b.gm.shape);
           ctx.fillStyle = `rgba(${TEAM[b.gm.side].rgb},0.28)`; ctx.fill(); ctx.lineWidth = 3.5; ctx.strokeStyle = TEAM[b.gm.side].col; ctx.stroke(); ctx.restore();
         }
@@ -2513,7 +2645,7 @@ const Game = (() => {
     ctx.strokeStyle = 'rgba(255,255,255,0.07)';
     ctx.beginPath();
     const c0 = Math.max(0, Math.floor(v0.x / CELL)), c1 = Math.min(COLS, Math.ceil(v1.x / CELL));
-    for (let c = c0; c <= c1; c++) if (c % every === 0) { ctx.moveTo(c * CELL, 0); ctx.lineTo(c * CELL, Math.min(groundRow(c), groundRow(c - 1)) * CELL); }
+    for (let c = c0; c <= c1; c++) if (c % every === 0) { ctx.moveTo(c * CELL, 0); ctx.lineTo(c * CELL, Math.min(ROWS, groundRow(c), groundRow(c - 1)) * CELL); }
     for (let r = 0; r <= ROWS; r++) if (r % every === 0) { ctx.moveTo(Math.max(0, v0.x), r * CELL); ctx.lineTo(Math.min(W, v1.x), r * CELL); }
     ctx.stroke();
     ctx.lineWidth = 3 / cam.z;
@@ -2521,12 +2653,16 @@ const Game = (() => {
     ctx.strokeStyle = `rgba(${TEAM.red.rgb},0.7)`; ctx.beginPath(); ctx.moveTo(RED_START * CELL, 0); ctx.lineTo(RED_START * CELL, H); ctx.stroke();
     ctx.setLineDash([12, 12]); ctx.strokeStyle = 'rgba(255,255,255,0.18)';
     ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(W, 0); ctx.stroke(); ctx.setLineDash([]);
-    const desert = MAPK === 'desert';
-    const g = ctx.createLinearGradient(0, H, 0, H + 400);
-    if (desert) { g.addColorStop(0, '#9c4526'); g.addColorStop(1, '#3a160c'); } else { g.addColorStop(0, '#3b2a1c'); g.addColorStop(1, '#120c07'); }
-    ctx.fillStyle = g; ctx.fillRect(WORLD_X0 - 2000, H, WORLD_X1 - WORLD_X0 + 4000, 800);
-    ctx.fillStyle = desert ? '#d9824a' : '#2f6b2a'; ctx.fillRect(WORLD_X0 - 2000, H, WORLD_X1 - WORLD_X0 + 4000, 10);
-    if (desert) drawTerrain();
+    const LOOK = GROUND_LOOK[MAPK] || GROUND_LOOK.field;
+    if (MAPK === 'towers') drawCloudSea();
+    else {
+      const g = ctx.createLinearGradient(0, H, 0, H + 400);
+      g.addColorStop(0, LOOK.dirt[0]); g.addColorStop(1, LOOK.dirt[1]);
+      ctx.fillStyle = g; ctx.fillRect(WORLD_X0 - 2000, H, WORLD_X1 - WORLD_X0 + 4000, 800);
+      ctx.fillStyle = LOOK.top; ctx.fillRect(WORLD_X0 - 2000, H, WORLD_X1 - WORLD_X0 + 4000, 10);
+      if (GROUND.some(g => g < ROWS)) drawTerrain(LOOK);
+      if (TREES.length) drawTrees();
+    }
     ctx.fillStyle = `rgba(${TEAM.blue.rgb},0.35)`; ctx.fillRect(0, H + 10, BLUE_END * CELL, 6);
     ctx.fillStyle = `rgba(${TEAM.red.rgb},0.35)`; ctx.fillRect(RED_START * CELL, H + 10, (COLS - RED_START) * CELL, 6);
     for (const s of ['blue', 'red']) {                // the low cannon platforms
@@ -2540,8 +2676,67 @@ const Game = (() => {
     ctx.fillStyle = 'rgba(255,255,255,0.18)'; ctx.fillText('BATTLEFIELD', (BLUE_END + RED_START) / 2 * CELL, H + 90);
     ctx.fillStyle = `rgba(${TEAM.red.rgb},0.35)`; ctx.fillText(TEAM.red.name, (RED_START + COLS) / 2 * CELL, H + 90);
   }
-  // red sandstone: the plateau and its staircase, in layered bands
-  function drawTerrain() {
+  // each map's ground: the soil below, the grass/snow/ash on top, and the raised ground's colours and bands
+  const GROUND_LOOK = {
+    field: { dirt: ['#3b2a1c', '#120c07'], top: '#2f6b2a' },
+    desert: { dirt: ['#9c4526', '#3a160c'], top: '#d9824a', fill: ['#c0633a', '#8e3d20'], band: 'rgba(90,30,12,0.35)', edge: '#e39a5e' },
+    snow: { dirt: ['#6f7f9a', '#2a3448'], top: '#f4f8ff', fill: ['#eef4ff', '#b8c8e4'], band: 'rgba(120,140,180,0.3)', edge: '#ffffff' },
+    jungle: { dirt: ['#3a2a14', '#120c06'], top: '#2e8a2a' },
+    wasteland: { dirt: ['#4a3020', '#1a0f08'], top: '#6a4a30', fill: ['#6e4a30', '#3e2616'], band: 'rgba(30,15,5,0.4)', edge: '#8a6440' },
+  };
+  // the Towers: a sea of clouds where the ground would be
+  function drawCloudSea() {
+    const t = performance.now();
+    ctx.fillStyle = 'rgba(200,210,245,0.95)'; ctx.fillRect(WORLD_X0 - 2000, H + 30, WORLD_X1 - WORLD_X0 + 4000, 900);
+    for (let x = WORLD_X0 - 200, i = 0; x < WORLD_X1 + 200; x += 90, i++) {
+      const y = H + 20 + Math.sin(i * 1.7 + t / 1600) * 10;
+      ctx.fillStyle = i % 2 ? '#eef2ff' : '#dfe6ff'; ctx.beginPath(); ctx.arc(x, y, 70 + (i % 3) * 14, 0, 7); ctx.fill();
+    }
+  }
+  // the Volcano Wasteland's background: dark volcanoes, glowing lava
+  function drawVolcanoes(now) {
+    const base = SH * 0.78, par = cam.x * cam.z * 0.03;
+    for (const [fx, w, h] of [[0.12, 0.34, 0.42], [0.5, 0.42, 0.55], [0.86, 0.3, 0.36]]) {
+      const x = ((fx * SW - par) % (SW * 1.2) + SW * 1.2) % (SW * 1.2) - SW * 0.1, top = base - SH * h;
+      ctx.fillStyle = '#1a0c08';
+      ctx.beginPath(); ctx.moveTo(x - SW * w / 2, base + 40); ctx.lineTo(x - SW * 0.04, top); ctx.lineTo(x + SW * 0.04, top); ctx.lineTo(x + SW * w / 2, base + 40); ctx.fill();
+      const glow = 0.6 + 0.4 * Math.sin(now / 400 + fx * 10);
+      ctx.fillStyle = `rgba(255,${90 + 60 * glow},20,0.9)`; ctx.beginPath(); ctx.ellipse(x, top, SW * 0.04, 6, 0, 0, 7); ctx.fill();
+      ctx.strokeStyle = `rgba(255,120,30,${0.7 * glow})`; ctx.lineWidth = 4;              // lava running down
+      ctx.beginPath(); ctx.moveTo(x - 6, top + 2); ctx.quadraticCurveTo(x - SW * 0.05, top + (base - top) * 0.5, x - SW * 0.09, base); ctx.stroke();
+      ctx.fillStyle = `rgba(90,40,30,${0.25 + 0.1 * glow})`;                              // smoke
+      ctx.beginPath(); ctx.arc(x + Math.sin(now / 900) * 10, top - 30, 26, 0, 7); ctx.arc(x + 20, top - 60, 34, 0, 7); ctx.fill();
+    }
+    const lava = ctx.createLinearGradient(0, base, 0, SH);
+    lava.addColorStop(0, 'rgba(255,110,20,0.55)'); lava.addColorStop(1, 'rgba(120,20,0,0.2)');
+    ctx.fillStyle = lava; ctx.fillRect(0, base + 30, SW, SH - base);
+  }
+  // the Jungle's trees: trunk and vines (climbable), a leafy canopy (solid, build on it)
+  function drawTrees() {
+    const t = performance.now();
+    for (const tr of TREES) {
+      const cx = (tr.c + 0.5) * CELL, top = tr.top * CELL;
+      ctx.fillStyle = '#5a3a1a'; ctx.fillRect(cx - CELL * 0.28, top + CELL * 0.5, CELL * 0.56, H - top - CELL * 0.5);
+      ctx.strokeStyle = '#3e2810'; ctx.lineWidth = 2;
+      for (let y = top + CELL; y < H; y += 22) { ctx.beginPath(); ctx.moveTo(cx - CELL * 0.2, y); ctx.lineTo(cx + CELL * 0.1, y + 8); ctx.stroke(); }
+      for (const v of [-2, 2]) {                       // vines
+        const vx = (tr.c + v + 0.5) * CELL;
+        ctx.strokeStyle = '#2f8a2a'; ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(vx, top + CELL);
+        for (let y = top + CELL; y <= top + CELL * 6; y += 10) ctx.lineTo(vx + Math.sin(y * 0.08 + t / 700) * 3, y);
+        ctx.stroke();
+        ctx.fillStyle = '#4fc23a';
+        for (let y = top + CELL * 1.4; y < top + CELL * 6; y += 24) { ctx.beginPath(); ctx.ellipse(vx + 5, y, 6, 3, 0.6, 0, 7); ctx.fill(); }
+      }
+      ctx.fillStyle = '#1f6a24';                        // the canopy (two leafy halves, the trunk coming up between them)
+      for (const [x0, x1] of [[tr.c - 2, tr.c], [tr.c + 1, tr.c + 3]]) {
+        ctx.beginPath(); ctx.roundRect(x0 * CELL - 4, top - 8, (x1 - x0) * CELL + 8, CELL + 12, 14); ctx.fill();
+      }
+      ctx.fillStyle = '#2e8a2a';
+      for (let i = 0; i < 7; i++) { if (i === 3) continue; ctx.beginPath(); ctx.arc((tr.c - 2) * CELL + 12 + i * CELL * 0.72, top + 2, 15, Math.PI, 0); ctx.fill(); }
+    }
+  }
+  // raised ground: the plateau / hill / wasteland slopes, in layered bands
+  function drawTerrain(LOOK = GROUND_LOOK.desert) {
     ctx.beginPath();
     ctx.moveTo(WORLD_X0 - 2000, H);
     ctx.lineTo(WORLD_X0 - 2000, groundRow(0) * CELL);
@@ -2550,15 +2745,15 @@ const Game = (() => {
     ctx.lineTo(WORLD_X1 + 2000, H);
     ctx.closePath();
     const g = ctx.createLinearGradient(0, (ROWS - PLATEAU) * CELL, 0, H);
-    g.addColorStop(0, '#c0633a'); g.addColorStop(1, '#8e3d20');
+    g.addColorStop(0, (LOOK.fill || GROUND_LOOK.desert.fill)[0]); g.addColorStop(1, (LOOK.fill || GROUND_LOOK.desert.fill)[1]);
     ctx.fillStyle = g; ctx.fill();
     ctx.save(); ctx.clip();
     for (let y = (ROWS - PLATEAU) * CELL + 14; y < H; y += 22) {
-      ctx.strokeStyle = 'rgba(90,30,12,0.35)'; ctx.lineWidth = 3;
+      ctx.strokeStyle = LOOK.band || 'rgba(90,30,12,0.35)'; ctx.lineWidth = 3;
       ctx.beginPath(); ctx.moveTo(WORLD_X0 - 2000, y); for (let x = WORLD_X0 - 2000; x < WORLD_X1 + 2000; x += 160) ctx.lineTo(x, y + Math.sin(x * 0.01 + y) * 5); ctx.stroke();
     }
     ctx.restore();
-    ctx.strokeStyle = '#e39a5e'; ctx.lineWidth = 5; ctx.stroke();
+    ctx.strokeStyle = LOOK.edge || '#e39a5e'; ctx.lineWidth = 5; ctx.stroke();
   }
   // Chipper's burrows: dark holes dug into the earth
   function drawTunnels() {
@@ -2629,10 +2824,11 @@ const Game = (() => {
     ctx.save(); ctx.globalAlpha = alpha;
     if (s.mat === 'rope') {
       const h = SHAPES[s.shape].h * CELL, cx = x + CELL / 2;
-      ctx.strokeStyle = '#6e4f24'; ctx.lineWidth = 7; ctx.beginPath(); ctx.moveTo(cx, y); ctx.lineTo(cx, y + h); ctx.stroke();
-      ctx.strokeStyle = '#b8914e'; ctx.lineWidth = 2;
+      const vine = MAPK === 'jungle';                   // in the jungle, ropes are green vines
+      ctx.strokeStyle = vine ? '#2f8a2a' : '#6e4f24'; ctx.lineWidth = 7; ctx.beginPath(); ctx.moveTo(cx, y); ctx.lineTo(cx, y + h); ctx.stroke();
+      ctx.strokeStyle = vine ? '#6fd24a' : '#b8914e'; ctx.lineWidth = 2;
       for (let yy = y + 3; yy < y + h; yy += 8) { ctx.beginPath(); ctx.moveTo(cx - 3, yy); ctx.lineTo(cx + 3, yy + 5); ctx.stroke(); }
-      ctx.fillStyle = '#6e4f24'; ctx.beginPath(); ctx.arc(cx, y + h - 3, 6, 0, 7); ctx.fill();
+      ctx.fillStyle = vine ? '#2f8a2a' : '#6e4f24'; ctx.beginPath(); ctx.arc(cx, y + h - 3, 6, 0, 7); ctx.fill();
     } else if (s.mat === 'door') {
       const gold = s.color === 'gold';
       ctx.fillStyle = gold ? '#7a5a08' : '#6a1010'; ctx.fillRect(x + 5, y + 1, CELL - 10, CELL - 1);
@@ -2784,6 +2980,10 @@ const Game = (() => {
     ctx.restore();
   }
   function drawLayouts(now) {
+    if (MAPK === 'towers') for (const s of ['blue', 'red']) {         // the concrete bases (they become real blocks when the battle starts)
+      ctx.fillStyle = TEAM[s].col; ctx.globalAlpha = 0.75; ctx.fillRect(PLATE[s][0] * CELL, (ROWS - 1) * CELL, (PLATE[s][1] - PLATE[s][0] + 1) * CELL, CELL);
+      ctx.globalAlpha = 1; ctx.strokeStyle = '#303238'; ctx.lineWidth = 3; ctx.strokeRect(PLATE[s][0] * CELL, (ROWS - 1) * CELL, (PLATE[s][1] - PLATE[s][0] + 1) * CELL, CELL);
+    }
     for (const side of ['blue', 'red']) {
       const L = S.layouts[side];
       for (const it of L.blocks) {
@@ -3106,6 +3306,7 @@ const Game = (() => {
       h += btn('dtool', 'Wood (1)', { v: 'wood', on: S.dtool === 'wood', cls: 'mat-wood' });
       h += btn('dtool', 'Glass (1)', { v: 'glass', on: S.dtool === 'glass', cls: 'mat-glass' });
       h += btn('dtool', 'Stone (2)', { v: 'stone', on: S.dtool === 'stone', cls: 'mat-stone' });
+      if (MAPK === 'towers') h += btn('dtool', `Cloud (${CLOUD_COST})`, { v: 'cloud', on: S.dtool === 'cloud', cls: 'mat-cloud' });
       h += btn('dtool', 'Remove', { v: 'remove', on: S.dtool === 'remove' });
       h += btn('endroll', 'End Roll', { off: S.pts <= 0 }) + btn('endturn', 'End Turn') + '</div>';
       // the fighters' abilities get their own row
@@ -3243,12 +3444,12 @@ const Game = (() => {
       case 'erase': S.tool = 'erase'; break;
       case 'autofort':
       {
-        const saved = Store.get('forts') || [], n = FORT_STYLES.length + saved.length;
+        const saved = Store.get('forts') || [], FS = fortStyles(), n = FS.length + saved.length;
         const i = S.autoStyle[side] = (S.autoStyle[side] + 1) % n;
-        if (i < FORT_STYLES.length) S.layouts[side] = genFort(side, { style: FORT_STYLES[i] });
-        else S.layouts[side] = loadFort(side, saved[i - FORT_STYLES.length]);
+        if (i < FS.length) S.layouts[side] = genFort(side, { style: FS[i] });
+        else S.layouts[side] = loadFort(side, saved[i - FS.length]);
         S.doorPending[side] = null; S.used[side] = [];
-        const name = i < FORT_STYLES.length ? FORT_NAMES[FORT_STYLES[i]] : saved[i - FORT_STYLES.length].name;
+        const name = i < FS.length ? FORT_NAMES[FS[i]] : saved[i - FS.length].name;
         toast(`Auto Fort: ${name} (${i + 1}/${n}) - tap again for another style`); break;
       }
       case 'savefort': saveFort(side); break;
@@ -3281,6 +3482,7 @@ const Game = (() => {
         if (v === 'bless') toast('Tap the unit Dread Bear should give 3 hearts to (once a match)');
         if (v === 'remove') toast('Tap one of YOUR blocks to take it away (stone 2 points, wood or glass 1)');
         if (v === 'wood' || v === 'glass' || v === 'stone') toast('New blocks can only go in the battlefield (the middle)');
+        if (v === 'cloud') toast('Put clouds out in the battlefield, then build on them to cross - anything that falls is lost');
         break;
       case 'endroll': doAct({ t: 'endroll' }); break;
       case 'endturn': doAct({ t: 'endturn' }); break;
@@ -3352,7 +3554,7 @@ const Game = (() => {
       h = `<h2 style="color:${col}">${title}</h2><p>${who} <span class="coin">${o.coins < 0 ? '' : '+'}${o.coins}</span> coins</p><p class="small">Win +10 &middot; Draw +5 &middot; Loss -10</p>
         ${btns}<button class="mbtn gray" data-o="quit">${camp ? 'CAMPAIGN' : 'MAIN MENU'}</button>`;
     } else if (kind === 'left') {
-      h = `<h2>MATCH OVER</h2><p>${o.reason || 'Your opponent left.'}</p><button class="mbtn" data-o="quit">BACK TO LOCAL</button>`;
+      h = `<h2>YOU WIN!</h2><p>${o.reason || 'Your opponent left.'}</p><p>They lose the match. <span class="coin">+${o.coins || 0}</span> coins</p><button class="mbtn" data-o="quit">BACK TO LOCAL</button>`;
     }
     ov.innerHTML = `<div class="panel">${h}</div>`;
     ov.classList.remove('hidden');
@@ -3369,6 +3571,10 @@ const Game = (() => {
       ov.classList.add('hidden'); stop(); start({ mode: 'campaign', level: lv });
     } else if (a === 'quit') {
       const wasCampaign = S && S.mode === 'campaign', mode = S && S.mode;
+      if (S && !S.result && (mode === 'online' || mode === 'campaign')) {      // walking out of a match is a loss
+        Store.reward('loss'); Store.set('activeMatch', false);
+        setTimeout(() => window.UI && UI.toast('You left the match - that counts as a loss (-10 coins)'), 300);
+      }
       ov.classList.add('hidden'); stop(); if (api.onExit) api.onExit(wasCampaign, mode);
     }
   }
@@ -3515,7 +3721,7 @@ const Game = (() => {
       else {
         Sfx.play('bad');
         const z = zoneOf(c);
-        toast(S.pts < MAT[S.dtool].dice ? 'Not enough points' : z !== 'field' ? 'New blocks can only go in the battlefield (the middle)' : 'That square is taken');
+        toast(S.pts < (S.dtool === 'cloud' ? CLOUD_COST : MAT[S.dtool].dice) ? 'Not enough points' : z !== 'field' ? 'New blocks can only go in the battlefield (the middle)' : 'That square is taken');
       }
     }
   }
@@ -3560,10 +3766,15 @@ const Game = (() => {
         applyMap(m.map, m.high);
         S.layouts[S.mySide] = { blocks: [], units: [] };
         lookBuild();
-        toast(m.map === 'desert' ? `Map: Red Desert - ${TEAM[m.high].name} holds the high ground` : 'Map: The Field');
+        toast(m.map === 'desert' ? `Map: Red Desert - ${TEAM[m.high].name} holds the high ground` : `Map: ${MAPS[m.map].name}`);
       }
     } else if (m.type === 'left') {
-      if (!S.result) showOverlay('left', { reason: m.reason });
+      // the other player walked out (or dropped): that's their loss and our win
+      if (!S.result) {
+        S.result = S.mySide; S.act = 'over';
+        const coins = Store.reward('win'); Store.set('activeMatch', false);
+        showOverlay('left', { reason: m.reason, coins });
+      }
     }
     hudSig = '';
   }
@@ -3618,7 +3829,7 @@ const Game = (() => {
     // which map: a campaign level has its own; otherwise it's a coin flip (the online host flips and tells the other phone)
     if (S.mode === 'campaign') { const L = LEVELS[S.level]; applyMap(L.map || 'field', L.high); }
     else if (S.mode === 'hotseat' || S.mySide === 'blue') {
-      applyMap(Math.random() < 0.5 ? 'field' : 'desert', Math.random() < 0.5 ? 'red' : 'blue');
+      applyMap(pick(Object.keys(MAPS)), Math.random() < 0.5 ? 'red' : 'blue');
       if (S.mode === 'online') Net.send({ type: 'setup', map: S.map, high: S.high });
     } else applyMap('field');
     if (S.mode === 'campaign') {
@@ -3631,6 +3842,7 @@ const Game = (() => {
     lookBuild();
     if (S.mode === 'hotseat') showOverlay('pass', { side: 'blue' });
     if (S.mode === 'campaign') showOverlay('intro');
+    if (S.mode === 'online' || S.mode === 'campaign') Store.set('activeMatch', true);
     running = true; last = performance.now();
     requestAnimationFrame(frame);
   }
@@ -3638,7 +3850,10 @@ const Game = (() => {
     setMap(map, high);
     S.map = MAPK; S.high = HIGH;
   }
-  const mapLine = () => S.map === 'desert' ? `<p class="mapline">MAP: <b>RED DESERT</b> - ${TEAM[S.high].name} holds the high ground</p>` : '<p class="mapline">MAP: <b>THE FIELD</b></p>';
+  const MAP_TIPS = { snow: 'a snowy hill in the middle', jungle: 'climb the trees and build on them', wasteland: 'a pit in the middle',
+    towers: 'no ground - build on your concrete base; fall and you\'re gone' };
+  const mapLine = () => S.map === 'desert' ? `<p class="mapline">MAP: <b>RED DESERT</b> - ${TEAM[S.high].name} holds the high ground</p>`
+    : `<p class="mapline">MAP: <b>${MAPS[S.map].name.toUpperCase()}</b>${MAP_TIPS[S.map] ? ' - ' + MAP_TIPS[S.map] : ''}</p>`;
   function lookBuild() {
     const side = bs();
     lookAt((side === 'blue' ? BLUE_END / 2 : (RED_START + COLS) / 2) * CELL, (landFloor(side) - 11) * CELL, buildZoom());
@@ -3660,7 +3875,7 @@ const Game = (() => {
       genFort, autoUnits, readyUp, checkSpecials, canHitCannon, canRepair, get camFree() { return !!cam.free; }, applyTeamLooks, makeBall, landBall, freeze, isFrozen, killFx, get parts() { return parts; }, doAct, moveTargets, aimVelocity, cpuAim, snapshot, applySnapshot, onBar, tap, buildTap, makeBlock, makeUnit,
       CELL, H, W, CANNON, unitCell, cam, toScreen, refocus, frameTarget, sideRect, breakTargets, setMap, get GROUND() { return GROUND; },
       frameNow: () => { update(0); draw(performance.now()); },
-      saveFort, loadFort, skinOf, FORT_STYLES, BALL_POWERS, powerOf, TEAM, ignite, djReach, teleCells, dusted, kd, reviveSpot, damageUnit, cpuShoot, LEVELS,
+      saveFort, loadFort, skinOf, FORT_STYLES, TOWER_STYLES, get MAPK() { return MAPK; }, MAPS, get clouds2() { return clouds; }, BALL_POWERS, powerOf, TEAM, ignite, djReach, teleCells, dusted, kd, reviveSpot, damageUnit, cpuShoot, LEVELS,
     },
   };
   return api;

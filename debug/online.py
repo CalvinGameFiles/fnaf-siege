@@ -123,8 +123,10 @@ try:
     check("A sees red's roll", until(lambda: A.eval(f"{D}.S.pts") == 4, 5))
     B.eval(f"{D}.doAct({{t:'endturn'}})")
     check("back to blue on both", until(lambda: A.eval(f"{D}.S.turn") == "blue" and B.eval(f"{D}.S.turn") == "blue", 20))
+    coinsB = B.eval("Store.get('coins')")
     B.eval("document.getElementById('hudMenu').click()"); pump(0.3); B.eval("document.querySelector('[data-o=quit]').click()")
-    check("A told the opponent left", until(lambda: "MATCH OVER" in (A.eval("document.getElementById('overlay').textContent") or ""), 10))
+    check("when B quits, A wins (+10)", until(lambda: "YOU WIN" in (A.eval("document.getElementById('overlay').textContent") or ""), 10))
+    check("...and B lost 10 coins for leaving", B.eval("Store.get('coins')") == coinsB - 10, f"{coinsB} -> {B.eval("Store.get('coins')")}")
     for c, n in ((A, "A"), (B, "B")):
         errs = [e for e in c.events if e["method"] == "Runtime.exceptionThrown"]
         check(f"no JS errors on {n}", not errs, str([e["params"]["exceptionDetails"].get("exception", {}).get("description") for e in errs][:3]))

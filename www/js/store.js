@@ -34,10 +34,9 @@ const Store = (() => {
     get: k => d[k],
     set(k, v) { d[k] = v; save(); },
     save,
-    // result: 'win' | 'draw' | 'loss'  ->  coins won (a loss COSTS 10, but never below 0)
+    // result: 'win' | 'draw' | 'loss'  ->  coins won (a loss COSTS 10, and coins CAN go below 0)
     reward(result) {
-      let n = { win: 10, draw: 5, loss: -10 }[result];
-      if (d.coins + n < 0) n = -d.coins;
+      const n = { win: 10, draw: 5, loss: -10 }[result];
       d.coins += n;
       d.stats[{ win: 'wins', draw: 'draws', loss: 'losses' }[result]]++;
       save();
