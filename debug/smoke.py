@@ -102,6 +102,11 @@ try:
     wait(f"{D}.S.flyView==='foe'", 12); cdp.pump(1.5); shot(cdp, "08b-damage-view")
     view = E(f"(() => {{ const d={D}; return [d.cam.x/40, (d.cam.x+915/d.cam.z)/40]; }})()")
     check("then pulls back over red's side to show the damage", view[0] > 23, str(view))
+    # a shot that hit nothing gets one more try: take it (a dud) so the turn passes
+    if wait(f"{D}.S.turn==='red' || ({D}.S.act==='aim' && {D}.S.retried)"):
+        if E(f"{D}.S.act==='aim' && {D}.S.retried"):
+            check("a complete miss gets one more try", True)
+            E(f"{D}.doAct({{t:'shot', vx:-2, vy:-2}})")
     check("turn passed to red", wait(f"{D}.S.turn==='red'"))
     cdp.pump(1.5); shot(cdp, "09-red-turn")
     view = E(f"(() => {{ const d={D}; return [d.cam.x/40, (d.cam.x+915/d.cam.z)/40]; }})()")

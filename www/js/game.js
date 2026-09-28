@@ -9,6 +9,7 @@ const Game = (() => {
   const MAX_ITEMS = 250, SOLDIERS = 9, ROLLS = 3, STEP = 1000 / 60;
   const VMAX = 36, VTHROW = 22;            // fastest cannon shot / cupcake throw (pixels per physics step)
   const BALL_DMG = 3;                      // a direct cannonball hit
+  const CANNON_HP = 5;                     // an enemy unit standing next to a cannon can hit it (1 each; a cannon wrecker: all 5)
   const MAX_DOORS = 3;                     // door pairs per side
   const CAT_CLOUD = 0x0004;                // cannonballs fly straight through clouds (same bit as CAT.cloud)
   const TEAM = {
@@ -594,6 +595,7 @@ const Game = (() => {
   function refocus(instant = false) {
     if (!S || S.phase !== 'battle') return;
     if (S.flyView && !S.result) return;              // a shot is being followed (stepCamera drives it)
+    if (cam.free) { if (S.act === 'dice' && !S.result) return; unfreeCam(); }   // the player is steering the camera
     let r;
     if (S.result) r = sideRect(S.result === 'draw' ? S.turn : other(S.result));
     else if (S.act === 'throw') r = launcherRect();
@@ -637,8 +639,13 @@ const Game = (() => {
     cam.cx = cam.x + SW / 2 / cam.z;
     cam.cy = cam.y + (HUD_T + (SH - HUD_T - HUD_B) / 2) / cam.z;
   }
+  // on your dice turn you can zoom and pan yourself (the camera first frames your whole army)
+  const diceCam = () => !!(S && S.phase === 'battle' && S.act === 'dice' && myTurn());
+  function freeCam() { if (!cam.free) { cam.free = true; cam.t = null; } }
+  function unfreeCam() { if (cam.free) { cam.free = false; lockCamera(); } }
   function stepCamera() {
     if (!cam.lock) return;
+    if (cam.free) { if (S && S.flyView) unfreeCam(); else return; }
     if (S && S.flyView) followShot();
     if (!cam.t) return;
     const k = cam.t.fast ? 0.35 : 0.08;
@@ -676,7 +683,7 @@ const Game = (() => {
       shotLog: null, recheck: false, bonus: null, flyView: null, tunnels: [], graves: { blue: [], red: [] },
       map: 'field', high: null,
       heat: { blue: 0, red: 0 }, cool: { blue: 0, red: 0 }, hot: false, magic: 0, powerUsed: { blue: false, red: false },
-      ammo: 'ball', cannonDown: { blue: false, red: false }, maskPending: [], autoStyle: { blue: Math.floor(Math.random() * 10) - 1, red: Math.floor(Math.random() * 10) - 1 },
+      ammo: 'ball', cannonDown: { blue: false, red: false }, cannonHp: { blue: CANNON_HP, red: CANNON_HP }, retried: false, maskPending: [], autoStyle: { blue: Math.floor(Math.random() * 10) - 1, red: Math.floor(Math.random() * 10) - 1 },
       cpuCorr: 1, cpuShot: null, cpuRaid: [], flyBody: null, flyT: 0, flyDice: false, throwKind: 'cupcake', refund: null,
       // shop looks (team colour, block colours, cannon): this device's on the side it plays, the default on the other
       looks: {
@@ -1428,6 +1435,7 @@ const Game = (() => {
     }
     if (og.type === 'ball') return;
     if (og.type === 'unit') {                         // a direct hit
+      if (g.cannon && inField(o)) return;               // the cannon can't hurt anyone out in the battlefield
       if (kd(o).onlyCrush) { shrug(o); if (g.theme === 'frost') freeze(o); g.live = false; return; }   // Dread Bear: it just bounces off
       damageUnit(o, BALL_DMG, 'cannon');
       if (g.theme === 'frost' && !o.gm.dead) freeze(o);   // the Frost cannon freezes whoever survives a hit
@@ -1460,7 +1468,7 @@ const Game = (() => {
 
   // ------------------------------------------------------------------ turns
   function beginTurn(side, first = false) {
-    S.turn = side; S.turnNo++; S.flyView = null; S.flyDice = false; S.bonus = null; S.ammo = 'ball'; S.refund = null; S.magic = 0;
+    S.turn = side; S.turnNo++; S.flyView = null; S.retried = false; S.flyDice = false; S.bonus = null; S.ammo = 'ball'; S.refund = null; S.magic = 0;
     S.hot = S.cool[side] > 0;                          // an overheated cannon sits this turn out
     if (S.hot) S.cool[side]--;
     S.act = S.final === side ? 'aim' : 'choose';
@@ -1491,6 +1499,8 @@ const Game = (() => {
       case 'break': { const u = units.find(x => x.gm.id === a.id), b = blocks.find(x => x.gm.id === a.bid); if (u && b) breakBlock(u, b); break; }
       case 'move': { const u = units.find(x => x.gm.id === a.id); if (u) moveUnit(u, a.c, a.r); break; }
       case 'place': repair(a.mat, a.c, a.r); break;
+      case 'unbuild': unbuild(blocks.find(x => x.gm.id === a.bid)); break;
+      case 'hitcannon': hitCannon(units.find(x => x.gm.id === a.id)); break;
       case 'endroll': S.pts = 0; S.bonus = null; afterPoints(); break;
       case 'endturn': S.pts = 0; S.rolls = 0; S.bonus = null; afterPoints(); break;
       case 'mask': {
@@ -1572,7 +1582,7 @@ const Game = (() => {
     if (tbu) { tb = tbOf(tbu); poof(tbu.position.x, tbu.position.y); removeBody(tbu); }
     const pw = !tb && power && powerOf(side);        // the side's cannonball power, once a match
     if (pw) { S.powerUsed[side] = true; S.ammo = 'ball'; }
-    makeBall(m.x, m.y, vx, vy, side, { tb, cpu: S.cpu === side, pw: pw || null, theme: tb ? null : skinOf(side, 'cannon') });
+    makeBall(m.x, m.y, vx, vy, side, { tb, cpu: S.cpu === side, pw: pw || null, theme: tb ? null : skinOf(side, 'cannon'), cannon: true });
     S.act = 'fly'; S.quiet = 0; S.settleT = 0; S.aimVec = null;
     S.shotLog = { blocks: 0, hits: 0, kills: 0 };
     S.flyView = 'ball';
@@ -1615,6 +1625,7 @@ const Game = (() => {
     Body.setVelocity(u, { x: b.velocity.x * 0.3, y: 0 });
     poof(b.position.x, b.position.y);
   }
+  const inField = u => zoneOf(unitCell(u).c) === 'field';
   // a cannonball from a themed cannon has come to rest
   function ballStopped(b) {
     const g = b.gm, x = b.position.x, y = b.position.y, R = CELL * 0.35;
@@ -1629,7 +1640,7 @@ const Game = (() => {
       }
     } else if (g.theme === 'storm') {                // the Blue Storm Destroyer: an enemy it's touching is struck down
       for (const u of units.slice()) {
-        if (u.gm.dead || u.gm.side === g.side || u.gm.dig) continue;
+        if (u.gm.dead || u.gm.side === g.side || u.gm.dig || inField(u)) continue;
         if (Math.hypot(u.position.x - x, u.position.y - y) < R + CELL * 0.47 + 6) { if (kd(u).onlyCrush) shrug(u); else killUnit(u); }
       }
     }
@@ -1972,6 +1983,7 @@ const Game = (() => {
         else if (raider) sc = (Math.abs(cell.c - goalC) - Math.abs((t.tele || t).c - goalC)) * 10 + (t.r < cell.r ? 2 : 0) + (kd(u).cannonKiller ? 1 : 0);
         if (sc > bestS) { bestS = sc; best = { t: 'move', id: u.gm.id, c: t.c, r: t.r }; }
       }
+      if (S.pts > 0 && canHitCannon(u) && 60 > bestS) { bestS = 60; best = { t: 'hitcannon', id: u.gm.id }; }
       if (raider && S.pts > 0) for (const { b, cost } of breakTargets(u)) {
         if (S.pts < cost) continue;
         const ahead = Math.sign(goalC - cell.c) === Math.sign(b.position.x / CELL - (cell.c + 0.5));
@@ -1991,7 +2003,8 @@ const Game = (() => {
   }
   function cpuAim() {
     const side = S.cpu, foe = other(side), lv = LEVELS[S.level] || LEVELS[0];
-    const targets = aliveUnits(foe);
+    const all = aliveUnits(foe), home = all.filter(u => !inField(u));
+    const targets = home.length ? home : all;          // (the cannon can't hurt units out in the battlefield)
     const king = targets.find(u => u.gm.kind === 'king');
     const t = king && Math.random() < 0.3 ? king : pick(targets);
     const g = G_STEP(), dir = t.position.x > CANNON[side].x ? 1 : -1;
@@ -2139,8 +2152,27 @@ const Game = (() => {
     Sfx.play('step');
     afterPoints();
   }
+  // a unit at the far edge of the enemy's land, down near the ground, is standing right next to their cannon
+  function canHitCannon(u) {
+    if (!u || u.gm.dead || isFrozen(u) || u.gm.dig) return false;
+    const foe = other(u.gm.side), { c, r } = unitCell(u);
+    return !S.cannonDown[foe] && c === (foe === 'red' ? COLS - 1 : 0) && r >= landFloor(foe) - 3;
+  }
+  function hitCannon(u) {
+    if (!canHitCannon(u) || S.pts <= 0) return;
+    const foe = other(u.gm.side), dmg = kd(u).cannonKiller ? CANNON_HP : 1, cp = CANNON[foe];
+    S.pts--; S.bonus = null;
+    S.cannonHp[foe] = Math.max(0, S.cannonHp[foe] - dmg);
+    u.gm.hop = 0.25;
+    parts.push({ t: 'text', x: cp.x, y: cp.y - CELL, vx: 0, vy: -1, life: 1, max: 1, txt: '-' + dmg, col: '#ff5050' });
+    for (let i = 0; i < 10; i++) parts.push({ t: 'spark', x: cp.x + rand(-20, 20), y: cp.y + rand(-15, 10), vx: rand(-4, 4), vy: rand(-5, 1), life: 0.5, max: 0.5, col: pick(['#ffd24a', '#ff8a3a', '#cccccc']), grav: 0.2 });
+    Sfx.play('thud'); cam.shake = Math.max(cam.shake, 6);
+    if (S.cannonHp[foe] <= 0) wreckCannon(foe, kd(u).name);
+    else toast(`${kd(u).name} hit ${TEAM[foe].name}'s cannon! (${S.cannonHp[foe]}/${CANNON_HP} left)`);
+    afterPoints();
+  }
   function wreckCannon(side, by = 'Balloon Boy') {
-    S.cannonDown[side] = true;
+    S.cannonDown[side] = true; S.cannonHp[side] = 0;
     const cp = CANNON[side];
     Sfx.play('blast'); cam.shake = 12;
     parts.push({ t: 'flash', x: cp.x, y: cp.y, s: CELL * 2, life: 0.25, max: 0.25 });
@@ -2204,6 +2236,16 @@ const Game = (() => {
     }
     return out;
   }
+  // take away one of your OWN blocks (to free a trapped unit): it costs what it costs to place one
+  const unbuildCost = b => (MAT[b.gm.mat] || MAT.wood).dice;
+  function unbuild(b) {
+    if (!b || b.gm.dead || b.gm.type !== 'block' || b.gm.side !== S.turn || S.pts < unbuildCost(b)) return;
+    const cost = unbuildCost(b);
+    S.pts -= cost; S.bonus = null;
+    destroyBlock(b);
+    toast(`Removed your ${MAT[b.gm.mat].name.toLowerCase()} for ${cost} point${cost > 1 ? 's' : ''}`);
+    afterPoints();
+  }
   function breakBlock(u, b) {
     const t = breakTargets(u).find(t => t.b === b);
     if (!t || S.pts < t.cost) return;
@@ -2212,9 +2254,9 @@ const Game = (() => {
     toast(`Smashed their ${MAT[b.gm.mat].name.toLowerCase()} for ${t.cost} point${t.cost > 1 ? 's' : ''}!`);
     afterPoints();
   }
+  // mid-game blocks go ONLY in the battlefield (never in your own land)
   function canRepair(mat, c, r) {
-    const z = zoneOf(c);
-    if (z !== S.turn && !(mat === 'glass' && z === 'field')) return false;
+    if (zoneOf(c) !== 'field') return false;
     return S.pts >= MAT[mat].dice && cellFree(c, r, null, true);
   }
   function repair(mat, c, r) {
@@ -2237,6 +2279,14 @@ const Game = (() => {
     for (const side of ['blue', 'red'])
       while (S.flee[side] > 0) { S.flee[side]--; const id = fleeOne(side); if (id != null) { S.fled.push(id); toast(`A ${TEAM[side].name} soldier ran away in fear!`); } }
     flushRemovals();
+    // a cannon shot that smashed no block and took out no unit gets ONE more try; a second miss ends the turn
+    const L0 = S.shotLog;
+    if (L0 && S.lastMode === 'cannon' && !L0.blocks && !L0.kills && !S.retried && !S.cannonDown[S.turn] && !S.fled.length && soldiers('blue') && soldiers('red')) {
+      S.shotLog = null;
+      if (S.mode === 'online') Net.send({ type: 'sync', snap: snapshot(), st: { turn: S.turn, retry: true, final: S.final, fled: [], cannonDown: S.cannonDown, cannonHp: S.cannonHp, heat: S.heat, cool: S.cool, powerUsed: S.powerUsed } });
+      retryShot();
+      return;
+    }
     if (S.shotLog && S.lastMode === 'cannon' && localCtrl(S.turn) && S.cpu !== S.turn) {
       const L = S.shotLog;
       toast(L.blocks || L.hits ? `Your shot smashed ${L.blocks} block${L.blocks === 1 ? '' : 's'}` + (L.kills ? ` and took out ${L.kills} unit${L.kills === 1 ? '' : 's'}!` : L.hits ? ' and hurt a unit!' : '') : 'Your shot missed...');
@@ -2250,9 +2300,15 @@ const Game = (() => {
     else if (!rl) { if (S.cannonDown.red) res = 'blue'; else { S.final = 'red'; next = 'red'; } }
     else next = other(S.turn);
     const fled = S.fled.slice();
-    if (S.mode === 'online') Net.send({ type: 'sync', snap: snapshot(), st: { turn: next, final: S.final, result: res, fled, cannonDown: S.cannonDown, heat: S.heat, cool: S.cool, powerUsed: S.powerUsed } });
+    if (S.mode === 'online') Net.send({ type: 'sync', snap: snapshot(), st: { turn: next, final: S.final, result: res, fled, cannonDown: S.cannonDown, cannonHp: S.cannonHp, heat: S.heat, cool: S.cool, powerUsed: S.powerUsed } });
     if (res) finish(res);
     else beginTurn(next);
+  }
+  function retryShot() {
+    S.retried = true; S.act = 'aim'; S.lastMode = 'cannon'; S.flyView = null; S.aimVec = null; S.ammo = 'ball';
+    bigText('MISSED! ONE MORE TRY', TEAM[S.turn].col);
+    refocus();
+    if (S.cpu === S.turn) { const n = S.turnNo; setTimeout(() => { if (S && S.turnNo === n && running && S.act === 'aim') cpuTurn(); }, 1400); }
   }
   function finish(res) {
     S.result = res; S.act = 'over';
@@ -2426,6 +2482,10 @@ const Game = (() => {
       for (const s of specials) drawSpecial(s, now);
       for (const b of blocks) {
         drawBlock(b.position.x, b.position.y, b.angle, b.gm.shape, b.gm.mat, b.gm.hp / b.gm.max, b.gm.seed, now, 1, b.gm.stuck, b.gm.side);
+        if (b.gm.side && zoneOf(Math.floor(b.position.x / CELL)) !== b.gm.side) {     // outside its owner's land: team colour shows whose it is
+          ctx.save(); ctx.translate(b.position.x, b.position.y); ctx.rotate(b.angle); blockPath(b.gm.shape);
+          ctx.fillStyle = `rgba(${TEAM[b.gm.side].rgb},0.28)`; ctx.fill(); ctx.lineWidth = 3.5; ctx.strokeStyle = TEAM[b.gm.side].col; ctx.stroke(); ctx.restore();
+        }
         if (b.gm.burn) {                              // on fire
           ctx.save(); ctx.translate(b.position.x, b.position.y); ctx.rotate(b.angle); blockPath(b.gm.shape);
           ctx.fillStyle = `rgba(255,106,0,${0.3 + 0.15 * Math.sin(now / 80 + b.gm.seed)})`; ctx.fill(); ctx.restore();
@@ -2700,6 +2760,17 @@ const Game = (() => {
       if (Math.random() < 0.08) parts.push({ t: 'smoke', x: cp.x + rand(-10, 10), y: cp.y, vx: rand(-0.3, 0.3), vy: -1, s: rand(8, 14), life: 1.2, max: 1.2, col: '70,70,70' });
       return;
     }
+    if (S.phase === 'battle' && S.cannonHp) {                 // its 5 health pips
+      for (let i = 0; i < CANNON_HP; i++) {
+        ctx.fillStyle = i < S.cannonHp[side] ? '#ff3b5c' : 'rgba(0,0,0,0.55)'; ctx.strokeStyle = '#000'; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.roundRect(cp.x - 2.5 * 13 + i * 13, cp.y - CELL * 1.35, 10, 8, 2); ctx.fill(); ctx.stroke();
+      }
+      const sel = S.act === 'dice' && myTurn() && S.dtool === 'move' && units.find(u => u.gm.id === S.sel && !u.gm.dead);
+      if (sel && sel.gm.side !== side && canHitCannon(sel)) {
+        ctx.strokeStyle = `rgba(255,70,70,${0.55 + 0.4 * Math.sin(performance.now() / 150)})`; ctx.lineWidth = 5;
+        ctx.beginPath(); ctx.arc(cp.x, cp.y, CELL * 1.6, 0, 7); ctx.stroke();
+      }
+    }
     if (S.phase === 'battle' && S.turn === side && S.act === 'aim' && S.aimVec) { const v = aimVelocity(S.aimVec); if (v.pow > 0.02) ang = Math.atan2(v.vy, v.vx); }
     ctx.save(); ctx.translate(cp.x, cp.y);
     if (S.phase === 'battle' && S.turn === side && S.act === 'aim' && !S.result) {     // highlight the cannon in use
@@ -2930,7 +3001,8 @@ const Game = (() => {
       S.phase === 'battle' ? units.map(u => u.gm.side[0] + vk(u.gm) + u.gm.hp + (u.gm.threw ? 't' : '') + (u.gm.blessed ? 'b' : '')).join('') : '',
       S.graves.blue.length, S.graves.red.length, S.phase === 'battle' && dusted(S.turn),
       S.layouts.blue.units.map(u => u.up || '').join(), S.layouts.red.units.map(u => u.up || '').join(),
-      S.phase === 'battle' && S.act === 'dice' ? djReach(S.turn).length : 0]);
+      S.phase === 'battle' && S.act === 'dice' ? djReach(S.turn).length : 0, !!cam.free, S.cannonHp,
+      S.phase === 'battle' && S.sel ? (u => u ? canHitCannon(u) : 0)(units.find(x => x.gm.id === S.sel)) : 0]);
     if (sig === hudSig) return;
     hudSig = sig;
     // on a phone the bar rows swipe sideways: keep each row where the player left it
@@ -3033,10 +3105,15 @@ const Game = (() => {
       h += btn('dtool', 'Wood (1)', { v: 'wood', on: S.dtool === 'wood', cls: 'mat-wood' });
       h += btn('dtool', 'Glass (1)', { v: 'glass', on: S.dtool === 'glass', cls: 'mat-glass' });
       h += btn('dtool', 'Stone (2)', { v: 'stone', on: S.dtool === 'stone', cls: 'mat-stone' });
+      h += btn('dtool', 'Remove', { v: 'remove', on: S.dtool === 'remove' });
       h += btn('endroll', 'End Roll', { off: S.pts <= 0 }) + btn('endturn', 'End Turn') + '</div>';
       // the fighters' abilities get their own row
       const main = h;
       h = '<div class="row">';
+      // zoom in / out / show everyone, so the squares are easy to tap
+      h += btn('zoom', '&#8722;', { v: 'out', cls: 'zb' }) + btn('zoom', '+', { v: 'in', cls: 'zb' }) + btn('zoom', '&#10530; All', { v: 'fit', on: !cam.free });
+      const selU = units.find(u => u.gm.id === S.sel && !u.gm.dead);
+      if (selU && canHitCannon(selU)) h += btn('hitcannon', `&#128165; Hit Cannon (${S.cannonHp[other(S.turn)]}/${CANNON_HP})`, { off: S.pts <= 0, cls: 'go' });
       const canAb = !S.rolling && (S.pts > 0 || S.rolls > 0);
       if (chica) h += btn('throwmode', '<img src="img/cupcake.png" class="uimg"> Cupcake', { off: !canAb, v: 'cupcake:' + chica.gm.id });
       for (const k of launchKeys(S.turn)) { const u = launchable(S.turn, k)[0]; if (u) h += btn('throwmode', `<img src="${KINDS[k].img}" class="uimg"> Launch`, { off: !canAb, v: 'self:' + u.gm.id }); }
@@ -3051,7 +3128,7 @@ const Game = (() => {
       const bl = abilityUnit(S.turn, 'bless');
       if (bl && !bl.gm.blessed) h += btn('dtool', `<img src="${KINDS[vk(bl.gm)].img}" class="uimg"> 3 Hearts`, { v: 'bless', on: S.dtool === 'bless' });
       if (S.magic) h += `<span class="note">Magic ${S.magic}/${MAGIC_PER_TURN}</span>`;
-      return main + (h === '<div class="row">' ? '' : h + '</div>');
+      return main + h + '</div>';
     }
     return `<div class="note">${S.act === 'fly' ? 'Fire!' : 'Waiting for everything to stop moving...'}</div>`;
   }
@@ -3184,6 +3261,10 @@ const Game = (() => {
       case 'ready': readyUp(side); break;
       case 'cannon': doAct({ t: 'mode', v: 'cannon' }); break;
       case 'dice': doAct({ t: 'mode', v: 'dice' }); break;
+      case 'zoom':
+        if (v === 'fit') { unfreeCam(); refocus(); break; }
+        freeCam(); zoomAt(SW / 2, SH / 2, v === 'in' ? 1.35 : 1 / 1.35); break;
+      case 'hitcannon': { const u = units.find(x => x.gm.id === S.sel && !x.gm.dead); if (u && canHitCannon(u) && S.pts > 0) doAct({ t: 'hitcannon', id: u.gm.id }); break; }
       case 'revive': {
         const ft = abilityUnit(S.turn, 'revive'), sp = ft && reviveSpot(ft);
         if (sp) doAct({ t: 'revive', i: +v, c: sp.c, r: sp.r });
@@ -3197,6 +3278,8 @@ const Game = (() => {
         if (v === 'djpick') toast('Tap the comrade DJ Music Man should throw (or grab one next to him and drag back)');
         if (v === 'tele') toast('Tap a glowing square next to one of your units - Pitch Black Ennard appears there');
         if (v === 'bless') toast('Tap the unit Dread Bear should give 3 hearts to (once a match)');
+        if (v === 'remove') toast('Tap one of YOUR blocks to take it away (stone 2 points, wood or glass 1)');
+        if (v === 'wood' || v === 'glass' || v === 'stone') toast('New blocks can only go in the battlefield (the middle)');
         break;
       case 'endroll': doAct({ t: 'endroll' }); break;
       case 'endturn': doAct({ t: 'endturn' }); break;
@@ -3304,7 +3387,7 @@ const Game = (() => {
     ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (ptrs.size === 2) {
       const [a, b] = [...ptrs.values()];
-      gest = cam.lock ? { t: 'none' } : { t: 'pinch', d: Math.hypot(a.x - b.x, a.y - b.y), mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 };
+      gest = cam.lock && !diceCam() ? { t: 'none' } : { t: 'pinch', d: Math.hypot(a.x - b.x, a.y - b.y), mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 };
       S.aimVec = null;
     } else if (ptrs.size === 1) {
       if (aimingNow()) { gest = { t: 'aim', ox: e.clientX, oy: e.clientY }; S.aimVec = { x: 0, y: 0 }; return; }
@@ -3329,13 +3412,17 @@ const Game = (() => {
     if (gest.t === 'pinch' && ptrs.size >= 2) {
       const [a, b] = [...ptrs.values()];
       const d = Math.hypot(a.x - b.x, a.y - b.y), mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+      if (cam.lock) freeCam();
       cam.x -= (mx - gest.mx) / cam.z; cam.y -= (my - gest.my) / cam.z;
       zoomAt(mx, my, d / (gest.d || d));
       gest.d = d; gest.mx = mx; gest.my = my;
     } else if (gest.t === 'pan') {
       const dx = e.clientX - gest.sx, dy = e.clientY - gest.sy;
       if (Math.hypot(dx, dy) > 9) gest.moved = true;
-      if (gest.moved && !cam.lock) { cam.x = gest.cx - dx / cam.z; cam.y = gest.cy - dy / cam.z; clampCam(); }
+      if (gest.moved && (!cam.lock || diceCam())) {
+        if (cam.lock && !cam.free) { freeCam(); gest.cx = cam.x + dx / cam.z; gest.cy = cam.y + dy / cam.z; }
+        cam.x = gest.cx - dx / cam.z; cam.y = gest.cy - dy / cam.z; clampCam();
+      }
     } else if (gest.t === 'aim') {
       S.aimVec = { x: e.clientX - gest.ox, y: e.clientY - gest.oy };
     } else if (gest.t === 'launchpick' && Math.hypot(e.clientX - gest.ox, e.clientY - gest.oy) > 14) {
@@ -3397,7 +3484,17 @@ const Game = (() => {
     const selU = units.find(u => u.gm.id === S.sel && !u.gm.dead);
     const freeBreak = S.dtool === 'move' && selU && breakTargets(selU).some(o => o.cost === 0);
     if (S.pts <= 0 && !hasBonus() && !freeBreak) { toast(S.rolls > 0 ? 'Roll the dice first!' : 'No points left'); return; }
+    if (S.dtool === 'remove') {
+      const b = solidAt(w.x, w.y);
+      if (b && b.gm && b.gm.type === 'block' && b.gm.side === S.turn) {
+        if (S.pts >= unbuildCost(b)) doAct({ t: 'unbuild', bid: b.gm.id });
+        else { Sfx.play('bad'); toast(`Removing that costs ${unbuildCost(b)} points`); }
+      } else { Sfx.play('bad'); toast('Tap one of your own blocks'); }
+      return;
+    }
     if (S.dtool === 'move') {
+      const selC = units.find(u => u.gm.id === S.sel && !u.gm.dead), foeC = CANNON[other(S.turn)];
+      if (selC && canHitCannon(selC) && Math.hypot(w.x - foeC.x, w.y - foeC.y) < CELL * 2.2) { doAct({ t: 'hitcannon', id: selC.gm.id }); return; }
       const mine = units.find(u => !u.gm.dead && u.gm.side === S.turn && Math.hypot(u.position.x - w.x, u.position.y - w.y) < CELL * 0.6);
       if (mine) { S.sel = mine.gm.id; Sfx.play('click'); return; }
       const sel = units.find(u => u.gm.id === S.sel && !u.gm.dead);
@@ -3417,15 +3514,15 @@ const Game = (() => {
       else {
         Sfx.play('bad');
         const z = zoneOf(c);
-        toast(S.pts < MAT[S.dtool].dice ? 'Not enough points' : z !== S.turn && !(S.dtool === 'glass' && z === 'field')
-          ? (S.dtool === 'glass' ? 'Glass goes in your land or the battlefield' : `${MAT[S.dtool].name} only goes in your own land`) : 'That square is taken');
+        toast(S.pts < MAT[S.dtool].dice ? 'Not enough points' : z !== 'field' ? 'New blocks can only go in the battlefield (the middle)' : 'That square is taken');
       }
     }
   }
   function onWheel(e) {
     if (!S) return;
     e.preventDefault();
-    if (cam.lock) return;
+    if (cam.lock && !diceCam()) return;
+    if (cam.lock) freeCam();
     zoomAt(e.clientX, e.clientY, Math.exp(-e.deltaY * 0.0015));
   }
   function onKey(e) {
@@ -3448,12 +3545,14 @@ const Game = (() => {
       applySnapshot(m.snap, m.st.fled || []);
       S.final = m.st.final;
       if (m.st.cannonDown) S.cannonDown = m.st.cannonDown;
+      if (m.st.cannonHp) S.cannonHp = m.st.cannonHp;
       if (m.st.heat) { S.heat = m.st.heat; S.cool = m.st.cool; }
       if (m.st.powerUsed) S.powerUsed = m.st.powerUsed;
       // a mask put on during the other phone's turn may have crossed its turn-end snapshot: put it back on
       for (const mk of S.maskPending) { const u = units.find(x => x.gm.id === mk.id); if (u && (KINDS[mk.kind].kingUp ? u.gm.up !== mk.kind : u.gm.kind === 'endo')) doAct({ t: 'mask', id: mk.id, kind: mk.kind, ab: mk.ab }); }
       S.maskPending = [];
-      if (m.st.result) finish(m.st.result);
+      if (m.st.retry) { S.maskPending = []; retryShot(); }
+      else if (m.st.result) finish(m.st.result);
       else beginTurn(m.st.turn);
     } else if (m.type === 'setup') {
       if (S.phase === 'build' && !S.ready[S.mySide]) {
@@ -3557,7 +3656,7 @@ const Game = (() => {
     debug: {
       get S() { return S; }, get blocks() { return blocks; }, get clouds() { return clouds; }, get units() { return units; }, get balls() { return balls; },
       get specials() { return specials; }, get engine() { return engine; },
-      genFort, autoUnits, readyUp, checkSpecials, applyTeamLooks, makeBall, landBall, freeze, isFrozen, killFx, get parts() { return parts; }, doAct, moveTargets, aimVelocity, cpuAim, snapshot, applySnapshot, onBar, tap, buildTap, makeBlock, makeUnit,
+      genFort, autoUnits, readyUp, checkSpecials, canHitCannon, canRepair, get camFree() { return !!cam.free; }, applyTeamLooks, makeBall, landBall, freeze, isFrozen, killFx, get parts() { return parts; }, doAct, moveTargets, aimVelocity, cpuAim, snapshot, applySnapshot, onBar, tap, buildTap, makeBlock, makeUnit,
       CELL, H, W, CANNON, unitCell, cam, toScreen, refocus, frameTarget, sideRect, breakTargets, setMap, get GROUND() { return GROUND; },
       frameNow: () => { update(0); draw(performance.now()); },
       saveFort, loadFort, skinOf, FORT_STYLES, BALL_POWERS, powerOf, TEAM, ignite, djReach, teleCells, dusted, kd, reviveSpot, damageUnit, cpuShoot, LEVELS,

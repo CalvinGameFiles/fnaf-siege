@@ -227,6 +227,7 @@ canvas#game, #hud { -webkit-touch-callout: none; }
 #equip2 { right: max(8px, env(safe-area-inset-right)); }
 #hudBar { padding-left: max(6px, env(safe-area-inset-left)); padding-right: max(6px, env(safe-area-inset-right)); }
 /* a bar row with more buttons than fit: swipe it sideways (a fade shows there's more) */
+.tb.zb { min-width: 40px; font-size: 20px; }
 #hudBar .row.more { -webkit-mask-image: linear-gradient(90deg, #000 88%, transparent); mask-image: linear-gradient(90deg, #000 88%, transparent); }
 #hudBar .row.more.moreL { -webkit-mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent); mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent); }
 #hudBar .row.moreL:not(.more) { -webkit-mask-image: linear-gradient(90deg, transparent, #000 12%); mask-image: linear-gradient(90deg, transparent, #000 12%); }

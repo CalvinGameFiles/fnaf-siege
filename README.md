@@ -34,7 +34,7 @@ One player taps **Play > Local > Host a game**, and the other sees it in the lis
 | `server.js` | the PC launcher's tiny web server |
 | `scripts/make-heads.py` | crops the pasted pictures into `www/img` and measures the eyes for blinking |
 | `desktop/` | the Windows app (Electron): `main.js`, `build.js` |
-| `debug/*.py` | automated tests (headless Chrome): `smoke`, `mech`, `online`, `levels`, `fighters`, `round6`, `round7`, `round8`, `round9`, `round10`, `round11` (tied ropes), `round12` (cannon effects, team colours, coins), `mobile` (phone sizes + finger gestures), `desktop` |
+| `debug/*.py` | automated tests (headless Chrome): `smoke`, `mech`, `online`, `levels`, `fighters`, `round6`, `round7`, `round8`, `round9`, `round10`, `round11` (tied ropes), `round12` (cannon effects, team colours, coins), `round13` (play-test fixes: battlefield, cannon HP, retries, dice zoom), `mobile` (phone sizes + finger gestures), `desktop` |
 
 ## Rules (short)
 - Map is 75x50. Blue land = columns 1-25, battlefield = 26-50, red land = 51-75. You can only build on your own colour. Each side's cannon sits behind its land on a low platform.
@@ -61,7 +61,9 @@ One player taps **Play > Local > Host a game**, and the other sees it in the lis
 - In battle the camera moves by itself: it shows the side whose turn it is (its army when it rolls), chases each cannonball, then pulls back over the side it lands on so both players see the damage. Your cannon lights up while you aim.
 - Your own cannonballs fly through everything that's yours. Cannonballs pass through ropes but still hit a unit hanging on one.
 - A unit inside the enemy's land can smash an enemy block next to it with dice points: stone 1, wood 2, glass 3.
-- Each turn: fire the cannon once, OR roll the dice 3 times. Points move units one square each (like a chess king), or place repair blocks (wood 1, glass 1, stone 2).
+- Each turn: fire the cannon once, OR roll the dice 3 times. Points move units one square each (like a chess king), or place blocks - only in the battlefield (wood 1, glass 1, stone 2; blocks outside their owner's land show its team colour). Remove takes away one of your own blocks for the same price. On a dice turn you can zoom (- / + / pinch) and drag the view; All frames your army again.
+- The cannon can't hurt units out in the battlefield. A shot that smashes no block and takes out no unit gets ONE more try; a second miss ends the turn.
+- Cannons have 5 health. An enemy unit at the far edge of your land (down by the ground) can hit your cannon for 1 per point; cannon wreckers (Balloon Boy, Funtime Freddy...) smash it in one hit.
 - If the King dies, one soldier flees. The side that loses its last soldier gets one final shot; wiping out the enemy with it makes the game a draw.
 - Team colours RED and BLUE are in the shop too (Common, 10 coins): whoever equips a colour plays in it, and if both sides end up the same colour, the one who didn't pick it (or player 2) switches to the other one.
 - Cannon looks do things: each has a kill effect where an enemy dies during its shot (gold confetti, flowers, weeds, lime spikes, a ghost skull, a falling icicle, fire, a lightning bolt, demon souls - the turn waits for it). Frost freezes a unit it hits but doesn't kill for its next turn; Red Samurai makes the block its stopped ball touches vanish; The Torch burns wood and treats glass like wood; Blue Storm kills an enemy its stopped ball touches; Shadow Phantom Boom treats stone like wood.
