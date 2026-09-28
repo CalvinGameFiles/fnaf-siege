@@ -109,6 +109,11 @@ try:
     check("both phones play the same map", A.eval(f"{D}.S.map + {D}.S.high") == B.eval(f"{D}.S.map + {D}.S.high"), A.eval(f"{D}.S.map + ' ' + {D}.S.high"))
     A.eval(f"{D}.onBar('cannon'); {D}.doAct({{t:'shot', vx:32, vy:-30}})")
     check("B sees the ball flying", until(lambda: B.eval(f"{D}.balls.length") >= 1, 5))
+    # if that shot hit nothing, blue gets one more try - and the other phone must know it too
+    until(lambda: A.eval(f"{D}.S.turn") == "red" or A.eval(f"{D}.S.act==='aim' && {D}.S.retried") is True, 30)
+    if A.eval(f"{D}.S.act==='aim' && {D}.S.retried") is True:
+        check("a missed shot's one more try shows on both phones", until(lambda: B.eval(f"{D}.S.retried===true && {D}.S.turn==='blue'") is True, 10))
+        A.eval(f"{D}.doAct({{t:'shot', vx:-2, vy:-2}})")
     check("turn passes to red on both", until(lambda: A.eval(f"{D}.S.turn") == "red" and B.eval(f"{D}.S.turn") == "red", 30))
     pump(0.5)
     sa = A.eval(f"JSON.stringify({D}.snapshot().units.map(u=>[u[0],Math.round(u[3]),Math.round(u[4])]))")
