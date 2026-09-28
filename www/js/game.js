@@ -3268,7 +3268,7 @@ const Game = (() => {
       h = `<h2 style="color:${col}">${title}</h2><p>${who} <span class="coin">${o.coins < 0 ? '' : '+'}${o.coins}</span> coins</p><p class="small">Win +10 &middot; Draw +5 &middot; Loss -10</p>
         ${btns}<button class="mbtn gray" data-o="quit">${camp ? 'CAMPAIGN' : 'MAIN MENU'}</button>`;
     } else if (kind === 'left') {
-      h = `<h2>MATCH OVER</h2><p>${o.reason || 'Your opponent left.'}</p><button class="mbtn" data-o="quit">MAIN MENU</button>`;
+      h = `<h2>MATCH OVER</h2><p>${o.reason || 'Your opponent left.'}</p><button class="mbtn" data-o="quit">BACK TO LOCAL</button>`;
     }
     ov.innerHTML = `<div class="panel">${h}</div>`;
     ov.classList.remove('hidden');
@@ -3284,8 +3284,8 @@ const Game = (() => {
       const lv = S.level + (a === 'next' ? 1 : 0);
       ov.classList.add('hidden'); stop(); start({ mode: 'campaign', level: lv });
     } else if (a === 'quit') {
-      const wasCampaign = S && S.mode === 'campaign';
-      ov.classList.add('hidden'); stop(); if (api.onExit) api.onExit(wasCampaign);
+      const wasCampaign = S && S.mode === 'campaign', mode = S && S.mode;
+      ov.classList.add('hidden'); stop(); if (api.onExit) api.onExit(wasCampaign, mode);
     }
   }
 

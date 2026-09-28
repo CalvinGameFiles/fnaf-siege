@@ -73,6 +73,28 @@ try:
     pump(3)
     check("B still sees A's game after all that", until(lambda: "HOSTY" in B.eval("document.getElementById('roomList').textContent"), 30),
           B.eval("document.getElementById('roomList').textContent"))
+    # the bug from the real phones: only the FIRST search found the game (an empty slot's "nobody here" error
+    # destroyed the searching peer). Every search must find it, not just the list remembering it.
+    hits = [B.eval("Net.list().then(r => r.some(g => g.name === 'HOSTY'))", 40) for _ in range(4)]
+    check("four searches in a row each find the game", hits == [True] * 4, str(hits))
+    # a join that fails (the game it tried is gone) must not spoil the next join
+    t0 = time.time()
+    err = B.eval("Net.join('fnafsiege-v2-nosuchgame-9', 'X').then(() => 'joined?!').catch(e => e.message)", 60)
+    check("joining a game that's gone fails quickly with a clear message", "gone" in err and time.time() - t0 < 25, f"{err} ({time.time() - t0:.0f}s)")
+    # both phones show the same network code
+    ca, cb = A.eval("document.getElementById('netCode2').textContent"), B.eval("document.getElementById('netCode').textContent")
+    check("both phones show the same network code", ca == cb and len(ca) == 4 and ca != "....", f"{ca} / {cb}")
+    # a phone that connects but never finishes joining (what went wrong on the real phones) must NOT start the
+    # host's match: the host keeps waiting and its game stays in the list
+    hid = A.eval("Net._peer.id")
+    B.eval(f"window.__ghost = new Peer({{debug:0}}); __ghost.on('open', () => {{ window.__gc = __ghost.connect('{hid}', {{ metadata: {{ name: 'GHOST' }}, reliable: true }}); }})")
+    check("a half-finished join reaches the host", until(lambda: B.eval("!!(window.__gc && window.__gc.open)") is True, 20))
+    pump(1.0)
+    check("...but the host does NOT start a match with it", A.eval("document.getElementById('waiting').classList.contains('active') && !Game.running") is True)
+    pump(12.5)
+    check("...and after it times out the host is still waiting", A.eval("document.getElementById('waiting').classList.contains('active') && !Game.running") is True)
+    B.eval("__ghost.destroy()")
+    check("...and its game is still in the list", until(lambda: "HOSTY" in B.eval("document.getElementById('roomList').textContent"), 20))
     B.eval("document.querySelector('.room').click()")
     check("both in a match", until(lambda: A.eval("Game.running") and B.eval("Game.running"), 20))
     check("A is blue, B is red", A.eval(f"{D}.S.mySide") == "blue" and B.eval(f"{D}.S.mySide") == "red")

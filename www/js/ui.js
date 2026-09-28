@@ -212,6 +212,7 @@
     $('localOnline').classList.toggle('hidden', !ok);
     $('localOffline').classList.toggle('hidden', ok);
     if (!ok) return;
+    showNetCode();
     if (!Object.keys(seen).length) $('roomList').innerHTML = '<p class="small">Looking for games...</p>';
     refreshRooms();
     clearInterval(roomTimer);
@@ -246,6 +247,11 @@
       box.appendChild(b);
     }
   }
+  // both phones show this: if the codes differ, they're on different internet connections and can't see each other
+  async function showNetCode() {
+    const code = await Net.networkCode();
+    for (const id of ['netCode', 'netCode2']) { const el = $(id); if (el) el.textContent = code; }
+  }
   $('searchBtn').onclick = () => { if (listing) return; Sfx.play('click'); refreshRooms(); };
   // keep the screen awake while hosting or playing in a phone's browser (the app does this itself)
   let wake = null;
@@ -259,7 +265,7 @@
   $('hostBtn').onclick = async () => {
     Sfx.play('click');
     $('hostBtn').disabled = true;
-    try { await Net.host(Store.get('name')); show('waiting'); hostStatus(true); stayAwake(true); }
+    try { await Net.host(Store.get('name')); show('waiting'); hostStatus(true); stayAwake(true); showNetCode(); }
     catch (e) { toast(e.message && e.message.length < 80 ? e.message : 'Could not start a game - check the internet'); }
     $('hostBtn').disabled = false;
   };
@@ -272,7 +278,8 @@
   async function joinRoom(id) {
     Sfx.play('click');
     clearInterval(roomTimer);
-    try { await Net.join(id, Store.get('name')); } catch (e) { toast(e.message || 'Could not join'); openLocal(); return; }
+    try { await Net.join(id, Store.get('name'), n => toast(n === 1 ? 'Connecting...' : `Connecting... (try ${n} of 3)`)); }
+    catch (e) { toast(e.message || 'Could not join'); openLocal(); return; }
     delete seen[id];
     stayAwake(true);
     startGame({ mode: 'online', mySide: 'red' });
@@ -285,7 +292,7 @@
   $('hotseatBtn').onclick = () => { Sfx.play('click'); startGame({ mode: 'hotseat' }); };
 
   function startGame(opts) { hideAll(); Game.start(opts); }
-  Game.onExit = wasCampaign => { stayAwake(false); show(wasCampaign ? 'campaign' : 'menu'); };
+  Game.onExit = (wasCampaign, mode) => { stayAwake(false); show(wasCampaign ? 'campaign' : mode === 'online' ? 'local' : 'menu'); };
 
   // the phone's back button (inside the app)
   const BACK = { mode: 'menu', campaign: 'mode', shop: 'campaign', local: 'mode', options: 'menu', guide: 'options', quit: 'menu' };
