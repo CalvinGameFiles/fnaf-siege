@@ -2004,7 +2004,8 @@ const Game = (() => {
     // Funtime Freddy at full health: bring a fallen comrade back instead of firing, then roll
     const ft = abilityUnit(side, 'revive'), sp = ft && S.act === 'choose' && !S.final && S.graves[side].length && ft.gm.hp >= ft.gm.mhp && reviveSpot(ft);
     if (sp && Math.random() < 0.6) { doAct({ t: 'revive', i: S.graves[side].length - 1, c: sp.c, r: sp.r }); cpuDice(); return; }
-    if (S.act === 'choose' && !S.final && (S.cannonDown[side] || S.hot || Math.random() < (raiding ? 0.55 : 0.3))) { cpuDice(); return; }
+    const powers = aliveUnits(side).some(u => { const k = kd(u); return k.shoot || k.ammo || k.tosser || k.tele || u.gm.kind === 'chica'; });
+    if (S.act === 'choose' && !S.final && (S.cannonDown[side] || S.hot || Math.random() < (raiding ? 0.55 : powers ? 0.5 : 0.3))) { cpuDice(); return; }
     if (S.act === 'choose') doAct({ t: 'mode', v: 'cannon' });
     setTimeout(() => {
       if (!S || S.cpu !== S.turn || S.act !== 'aim') return;
@@ -2017,13 +2018,15 @@ const Game = (() => {
     }, 900);
   }
   // the soldiers it sends toward the enemy (fast or cannon-wrecking fighters first, then whoever is closest)
+  // how good a fighter is at raiding: cannon wreckers first, then the ones that get past walls or move fast
+  const raidScore = u => { const k = kd(u); return (k.cannonKiller ? 4 : 0) + (k.phase || k.dig || k.fly || k.climb ? 2 : 0) + (k.steps ? 2 : 0) + (k.freeWood || k.freeGlass ? 1 : 0) + (k.hp > 1 ? 1 : 0); };
   function cpuRaiders() {
     const side = S.cpu, foeEdge = side === 'red' ? 0 : COLS - 1;
     let ids = S.cpuRaid.filter(id => units.some(u => u.gm.id === id && !u.gm.dead));
     const want = (S.level || 0) >= 4 ? 3 : 2;
     if (ids.length < want) {
       const pool = aliveUnits(side).filter(u => isSoldier(u.gm.kind) && !ids.includes(u.gm.id))
-        .sort((a, b) => (kd(b).cannonKiller ? 2 : kd(b).steps ? 1 : 0) - (kd(a).cannonKiller ? 2 : kd(a).steps ? 1 : 0)
+        .sort((a, b) => raidScore(b) - raidScore(a)
           || Math.abs(unitCell(a).c - foeEdge) - Math.abs(unitCell(b).c - foeEdge) || unitCell(b).r - unitCell(a).r);
       ids = ids.concat(pool.slice(0, want - ids.length).map(u => u.gm.id));
     }
@@ -2033,7 +2036,7 @@ const Game = (() => {
   function cpuDice() {
     doAct({ t: 'mode', v: 'dice' });
     const n = S.turnNo;
-    let shots = 0;
+    let shots = 0; const used = new Set();
     // Dread Bear's gift goes to a raider (or anyone)
     const db = abilityUnit(S.cpu, 'bless');
     if (db && !db.gm.blessed) {
@@ -2045,7 +2048,8 @@ const Game = (() => {
       if (S.rolling || balls.some(b => !b.gm.dead)) { setTimeout(step, 300); return; }
       if (S.pts <= 0 && !hasBonus()) {
         // sometimes a roll is spent on a shooter's shot instead
-        if (S.rolls > 0 && shots < 2 && Math.random() < 0.55 && cpuShoot()) { shots++; setTimeout(step, 900); return; }
+        // most turns a roll or two goes on the fighters' powers: shots, launches, throws, teleports
+        if (S.rolls > 0 && shots < 2 && Math.random() < 0.8 && cpuPower(used)) { shots++; setTimeout(step, 1100); return; }
         if (S.rolls > 0) { doAct({ t: 'roll', v: rollDie() }); setTimeout(step, 1000); }
         return;
       }
@@ -2054,6 +2058,58 @@ const Game = (() => {
       setTimeout(step, 280);
     };
     setTimeout(step, 700);
+  }
+  // a throw / launch / shot from (fx, fy) at speed v that lands on (tx, ty): the low arc, with the level's wobble
+  function cpuArc(fx, fy, tx, ty, v, straight = false) {
+    const lv = LEVELS[S.level] || LEVELS[0], g = G_STEP(), dx = tx - fx, dy = fy - ty, ax = Math.abs(dx);
+    if (straight) { const d = Math.hypot(dx, dy) || 1; return { vx: dx / d * v, vy: -dy / d * v }; }
+    const disc = v ** 4 - g * (g * ax * ax + 2 * dy * v * v);
+    if (disc < 0 || ax < CELL) return null;
+    const th = Math.atan((v * v - Math.sqrt(disc)) / (g * ax)) + (Math.random() * 2 - 1) * lv.noise * 0.2;
+    return { vx: Math.round(Math.sign(dx) * v * Math.cos(th) * 1000) / 1000, vy: Math.round(-v * Math.sin(th) * 1000) / 1000 };
+  }
+  // spend a roll on one of its fighters' powers (each kind once a turn): returns true if it used one
+  function cpuPower(used) {
+    const side = S.cpu, foe = other(side), mine = aliveUnits(side).filter(u => !u.gm.dig && !isFrozen(u));
+    const foes = aliveUnits(foe).filter(t => !kd(t).onlyCrush && !t.gm.dig), home = foes.filter(t => zoneOf(unitCell(t).c) === foe);
+    const tries = [];
+    // launch a fighter (Toy Bonnie, Bidybab, Electrobab, Dust Mangle, Molten Freddy...) into the enemy's land
+    const ln = mine.filter(canLaunch);
+    if (ln.length && home.length && !used.has('self')) tries.push(() => {
+      const u = pick(ln), t = pick(home), v = cpuArc(u.position.x, u.position.y - 4, t.position.x, t.position.y - CELL, VMAX);
+      if (!v) return false;
+      doAct({ t: 'throwmode', id: u.gm.id, kind: 'self' }); doAct({ t: 'throw', id: u.gm.id, kind: 'self', ...v }); used.add('self'); return true;
+    });
+    // DJ Music Man throws a comrade into the enemy's land
+    const dj = djReach(side);
+    if (dj.length && home.length && !used.has('dj')) tries.push(() => {
+      const u = dj.sort((a, b) => raidScore(b) - raidScore(a))[0], t = pick(home), v = cpuArc(u.position.x, u.position.y - 4, t.position.x, t.position.y - CELL, VMAX);
+      if (!v) return false;
+      doAct({ t: 'throwmode', id: u.gm.id, kind: 'dj' }); doAct({ t: 'throw', id: u.gm.id, kind: 'dj', ...v }); used.add('dj'); return true;
+    });
+    // Chica's cupcake
+    const ch = mine.find(u => u.gm.kind === 'chica' && !u.gm.threw);
+    if (ch && foes.length && !used.has('cup')) tries.push(() => {
+      const t = foes.slice().sort((a, b) => Math.abs(a.position.x - ch.position.x) - Math.abs(b.position.x - ch.position.x))[0];
+      const v = cpuArc(ch.position.x, ch.position.y - CELL * 1.05, t.position.x, t.position.y - CELL, VTHROW);
+      if (!v) return false;
+      doAct({ t: 'throwmode', id: ch.gm.id, kind: 'cupcake' }); doAct({ t: 'throw', id: ch.gm.id, kind: 'cupcake', ...v }); used.add('cup'); return true;
+    });
+    // Pitch Black Ennard jumps next to the raider that's deepest into enemy land
+    const en = mine.find(u => kd(u).tele);
+    if (en && !used.has('tele')) tries.push(() => {
+      const edge = side === 'red' ? 0 : COLS - 1;
+      const lead = mine.filter(u => u !== en).sort((a, b) => Math.abs(unitCell(a).c - edge) - Math.abs(unitCell(b).c - edge))[0];
+      if (!lead || Math.abs(unitCell(lead).c - edge) >= Math.abs(unitCell(en).c - edge) - 3) return false;
+      const cells = teleCells(en).filter(t => Math.abs(t.c - (lead.position.x / CELL)) < 2 && Math.abs(t.r - (lead.position.y / CELL)) < 2);
+      if (!cells.length) return false;
+      const t = cells.sort((a, b) => Math.abs(a.c - edge) - Math.abs(b.c - edge))[0];
+      doAct({ t: 'tele', id: en.gm.id, c: t.c, r: t.r }); used.add('tele'); return true;
+    });
+    // shooters: fireball, ooze, goo, cookie, festive magic, blue cannonball
+    if (!used.has('shot2')) tries.push(() => { const ok = cpuShoot(); if (ok) used.add(used.has('shot') ? 'shot2' : 'shot'); return ok; });
+    for (const f of tries.sort(() => Math.random() - 0.5)) if (f()) return true;
+    return false;
   }
   // a CPU shooter fires at an enemy it can reach (a flat, low arc; the cookie flies straight)
   function cpuShoot() {
@@ -2399,7 +2455,7 @@ const Game = (() => {
     flushRemovals();
     // a cannon shot that smashed no block and took out no unit gets ONE more try; a second miss ends the turn
     const L0 = S.shotLog;
-    if (L0 && S.lastMode === 'cannon' && !L0.blocks && !L0.kills && !S.retried && !S.cannonDown[S.turn] && !S.cool[S.turn] && !S.fled.length && soldiers('blue') && soldiers('red')) {
+    if (L0 && S.lastMode === 'cannon' && !L0.blocks && !L0.kills && !S.retried && !S.cannonDown[S.turn] && !S.fled.length && soldiers('blue') && soldiers('red')) {
       S.shotLog = null;
       if (S.mode === 'online') Net.send({ type: 'sync', snap: snapshot(), st: { turn: S.turn, retry: true, final: S.final, fled: [], cannonDown: S.cannonDown, cannonHp: S.cannonHp, heat: S.heat, cool: S.cool, powerUsed: S.powerUsed } });
       retryShot();
@@ -3541,8 +3597,12 @@ const Game = (() => {
       h = `<h2>BATTLE!</h2><p>Each turn: <b>fire the cannon</b> once, or <b>roll the dice 3 times</b> to move units and repair.<br>
         Your own cannonballs fly straight through everything that's yours. Wipe out all 9 enemy soldiers to win.</p><p style="color:${TEAM.blue.col}"><b>BLUE goes first.</b></p><button class="mbtn" data-o="close">FIGHT!</button>`;
     } else if (kind === 'pause') {
+      const draw = S.mode === 'online' && !S.result ? `<button class="mbtn gray" data-o="offerdraw"${S.drawSent ? ' disabled' : ''}>${S.drawSent ? 'DRAW OFFERED...' : 'OFFER DRAW'}</button>` : '';
       h = `<h2>PAUSED</h2><button class="mbtn" data-o="close">RESUME</button><button class="mbtn" data-o="aimtoggle">AIMER: ${Store.get('aimOn') ? 'ON' : 'OFF'}</button>
-        <button class="mbtn red" data-o="quit">QUIT MATCH</button>`;
+        ${draw}<button class="mbtn red" data-o="quit">QUIT MATCH${S.mode === 'online' ? ' <small>(-10)</small>' : ''}</button>`;
+    } else if (kind === 'drawoffer') {
+      h = `<h2>DRAW?</h2><p>Your opponent offers a draw.<br>Accept and the match ends: you both get <span class="coin">+5</span> coins.</p>
+        <button class="mbtn" data-o="drawyes">ACCEPT DRAW</button><button class="mbtn gray" data-o="drawno">KEEP PLAYING</button>`;
     } else if (kind === 'result') {
       const camp = S.mode === 'campaign';
       const title = camp ? (o.outcome === 'win' ? `LEVEL ${S.level + 1} COMPLETE!` : o.outcome === 'draw' ? 'DRAW!' : 'LEVEL FAILED') : o.res === 'draw' ? 'DRAW!' : `${TEAM[o.res].name} WINS!`;
@@ -3566,12 +3626,23 @@ const Game = (() => {
       ov.classList.add('hidden');
       if (a === 'build') lookBuild();
     } else if (a === 'aimtoggle') { Store.set('aimOn', !Store.get('aimOn')); showOverlay('pause'); }
+    else if (a === 'offerdraw') {
+      if (!S || S.mode !== 'online' || S.result || S.drawSent) return;
+      S.drawSent = true; Net.send({ type: 'drawoffer' });
+      ov.classList.add('hidden'); toast('Draw offered - waiting for your opponent to answer');
+    } else if (a === 'drawyes') {
+      Net.send({ type: 'drawreply', ok: true });
+      ov.classList.add('hidden'); if (S && !S.result) finish('draw');
+    } else if (a === 'drawno') {
+      Net.send({ type: 'drawreply', ok: false });
+      ov.classList.add('hidden');
+    }
     else if (a === 'next' || a === 'retry') {
       const lv = S.level + (a === 'next' ? 1 : 0);
       ov.classList.add('hidden'); stop(); start({ mode: 'campaign', level: lv });
     } else if (a === 'quit') {
       const wasCampaign = S && S.mode === 'campaign', mode = S && S.mode;
-      if (S && !S.result && (mode === 'online' || mode === 'campaign')) {      // walking out of a match is a loss
+      if (S && !S.result && mode === 'online') {      // walking out of a Local match is a loss (leaving a campaign level is free)
         Store.reward('loss'); Store.set('activeMatch', false);
         setTimeout(() => window.UI && UI.toast('You left the match - that counts as a loss (-10 coins)'), 300);
       }
@@ -3768,6 +3839,12 @@ const Game = (() => {
         lookBuild();
         toast(m.map === 'desert' ? `Map: Red Desert - ${TEAM[m.high].name} holds the high ground` : `Map: ${MAPS[m.map].name}`);
       }
+    } else if (m.type === 'drawoffer') {
+      if (!S.result) showOverlay('drawoffer');
+    } else if (m.type === 'drawreply') {
+      S.drawSent = false;
+      if (m.ok && !S.result) finish('draw');
+      else if (!m.ok) toast('Your opponent wants to keep playing');
     } else if (m.type === 'left') {
       // the other player walked out (or dropped): that's their loss and our win
       if (!S.result) {
@@ -3842,7 +3919,7 @@ const Game = (() => {
     lookBuild();
     if (S.mode === 'hotseat') showOverlay('pass', { side: 'blue' });
     if (S.mode === 'campaign') showOverlay('intro');
-    if (S.mode === 'online' || S.mode === 'campaign') Store.set('activeMatch', true);
+    if (S.mode === 'online') Store.set('activeMatch', true);
     running = true; last = performance.now();
     requestAnimationFrame(frame);
   }
@@ -3875,7 +3952,7 @@ const Game = (() => {
       genFort, autoUnits, readyUp, checkSpecials, canHitCannon, canRepair, get camFree() { return !!cam.free; }, applyTeamLooks, makeBall, landBall, freeze, isFrozen, killFx, get parts() { return parts; }, doAct, moveTargets, aimVelocity, cpuAim, snapshot, applySnapshot, onBar, tap, buildTap, makeBlock, makeUnit,
       CELL, H, W, CANNON, unitCell, cam, toScreen, refocus, frameTarget, sideRect, breakTargets, setMap, get GROUND() { return GROUND; },
       frameNow: () => { update(0); draw(performance.now()); },
-      saveFort, loadFort, skinOf, FORT_STYLES, TOWER_STYLES, get MAPK() { return MAPK; }, MAPS, get clouds2() { return clouds; }, BALL_POWERS, powerOf, TEAM, ignite, djReach, teleCells, dusted, kd, reviveSpot, damageUnit, cpuShoot, LEVELS,
+      saveFort, loadFort, skinOf, cpuPower, FORT_STYLES, TOWER_STYLES, get MAPK() { return MAPK; }, MAPS, get clouds2() { return clouds; }, BALL_POWERS, powerOf, TEAM, ignite, djReach, teleCells, dusted, kd, reviveSpot, damageUnit, cpuShoot, LEVELS,
     },
   };
   return api;
