@@ -1,0 +1,19 @@
+{
+  "name": "fnaf-siege",
+  "productName": "FNAF Siege",
+  "version": "0.3.0",
+  "description": "FNAF Siege desktop app",
+  "main": "main.js",
+  "private": true,
+  "devDependencies": {
+    "@electron/packager": "^18.3.0",
+    "electron": "^33.0.0"
+  },
+  "scripts": {
+    "start": "electron .",
+    "build": "node build.js"
+  },
+  "dependencies": {
+    "rcedit": "^4.0.1"
+  }
+}

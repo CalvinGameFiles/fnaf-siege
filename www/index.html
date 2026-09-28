@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#07060f">
+<title>FNAF Siege</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="img/icon-192.png">
+<link rel="apple-touch-icon" href="img/icon-192.png">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<!-- MAIN MENU -->
+<div id="menu" class="screen active">
+  <div class="menu-bg"></div>
+  <div class="title-wrap">
+    <div class="title-heads"><img src="img/endo.png" class="t-endo"><img src="img/freddy.png" class="t-freddy"><img src="img/endo.png" class="t-endo"></div>
+    <h1 class="title">FNAF <span>SIEGE</span></h1>
+  </div>
+  <div class="menu-buttons">
+    <button class="mbtn" data-go="mode">PLAY</button>
+    <button class="mbtn" data-go="options">OPTIONS</button>
+    <button class="mbtn red" data-go="quit">QUIT GAME</button>
+  </div>
+</div>
+
+<!-- PLAY: campaign or local -->
+<div id="mode" class="screen">
+  <h2>PLAY</h2>
+  <div class="menu-buttons">
+    <button class="mbtn" data-go="campaign">CAMPAIGN</button>
+    <button class="mbtn" data-go="local">LOCAL</button>
+    <button class="mbtn gray" data-go="menu">BACK</button>
+  </div>
+</div>
+
+<!-- CAMPAIGN: level squares, shop in the corner, inventory bar -->
+<div id="campaign" class="screen">
+  <div class="topbar">
+    <button class="sbtn" data-go="mode">&#9664; BACK</button>
+    <div class="coins"><span class="coin-ico"></span><b class="coin-n">0</b></div>
+    <button class="sbtn gold" data-go="shop">SHOP</button>
+  </div>
+  <div class="camp-body">
+    <div class="camp-left">
+      <div class="lvl-pager"><button class="sbtn" id="lvlPrev">&#9664;</button><span id="lvlPage">Levels 1-10</span><button class="sbtn" id="lvlNext">&#9654;</button></div>
+      <div class="levels" id="levels"></div>
+      <div class="lvl-info" id="lvlInfo">Pick a level</div>
+      <button class="mbtn" id="playLevel">PLAY</button>
+    </div>
+    <div class="camp-right">
+      <h3>INVENTORY</h3>
+      <div class="invgrid" id="invGrid"></div>
+      <p class="small">Drag items into the gold bar to take them into battle.</p>
+    </div>
+  </div>
+  <div class="inventory" id="equipBar"></div>
+</div>
+
+<!-- SHOP -->
+<div id="shop" class="screen">
+  <div class="topbar">
+    <button class="sbtn" data-go="campaign">&#9664; BACK</button>
+    <div class="coins"><span class="coin-ico"></span><b class="coin-n">0</b></div>
+    <span></span>
+  </div>
+  <h2 class="shop-h">SHOP</h2>
+  <div class="rarity-pager"><button class="sbtn" id="rarPrev">&#9664;</button><b id="rarName">COMMON</b><button class="sbtn" id="rarNext">&#9654;</button></div>
+  <p class="small" id="rarHint"></p>
+  <div class="shopgrid" id="shopgrid"></div>
+</div>
+
+<!-- LOCAL -->
+<div id="local" class="screen">
+  <div class="topbar">
+    <button class="sbtn" data-go="mode">&#9664; BACK</button>
+    <h2 style="margin:0">LOCAL</h2>
+    <span></span>
+  </div>
+  <div class="local-body">
+    <div id="localOnline">
+      <p class="small">Players on the same Wi-Fi can see each other's games.</p>
+      <div class="namebox">Your name: <input id="nameIn" maxlength="12"></div>
+      <button class="mbtn" id="hostBtn">HOST A GAME</button>
+      <h3>Games waiting on your network</h3>
+      <div id="roomList" class="roomlist"><p class="small">Looking for games...</p></div>
+    </div>
+    <div id="localOffline" class="hidden">
+      <p>Local play needs an internet connection so the two phones can find each other.</p>
+    </div>
+    <button class="mbtn gray" id="hotseatBtn">PASS &amp; PLAY (one device)</button>
+  </div>
+</div>
+
+<!-- WAITING FOR A SECOND PLAYER -->
+<div id="waiting" class="screen">
+  <h2>WAITING FOR PLAYER 2...</h2>
+  <div class="waitheads"><img src="img/endo.png"><img src="img/endo.png"><img src="img/endo.png"></div>
+  <p>Your game is showing on every device on this Wi-Fi.<br>You are <b style="color:#3d8bff">BLUE</b>.</p>
+  <button class="mbtn red" id="cancelHost">CANCEL</button>
+</div>
+
+<!-- OPTIONS -->
+<div id="options" class="screen">
+  <div class="topbar">
+    <button class="sbtn" data-go="menu">&#9664; BACK</button>
+    <h2 style="margin:0">OPTIONS</h2>
+    <span></span>
+  </div>
+  <div class="opts">
+    <div class="opt"><span>Aim dot colour</span><div id="aimColors" class="swatches"></div></div>
+    <div class="opt"><span>Show aimer</span><button class="toggle" id="aimToggle">ON</button></div>
+    <div class="opt"><span>Volume</span><input type="range" id="vol" min="0" max="1" step="0.05"><b id="volN"></b></div>
+    <div class="opt"><button class="mbtn" data-go="guide">HOW TO PLAY</button></div>
+  </div>
+</div>
+
+<!-- HOW TO PLAY -->
+<div id="guide" class="screen">
+  <div class="topbar">
+    <button class="sbtn" data-go="options">&#9664; BACK</button>
+    <h2 style="margin:0">HOW TO PLAY</h2>
+    <span></span>
+  </div>
+  <div class="guide">
+    <h3>The map</h3>
+    <p>The field is 75 squares wide and 50 tall. The first 25 columns are <b class="b">BLUE</b>'s land, the last 25 are <b class="r">RED</b>'s, and the 25 in the middle are the battlefield. Each side's cannon sits behind its land.</p>
+    <p>Maps: <b>The Field</b> is flat. In the <b>Red Desert</b> one side stands on a raised sandstone plateau, and a staircase slope through the battlefield leads up to it.</p>
+    <h3>1. Build</h3>
+    <p>Pick a material and a shape and tap your land (the square you tap is the block's bottom-left corner). Drag to look around and pinch or scroll to zoom while you build. You can only build on your own colour.</p>
+    <ul>
+      <li><b>Stone</b> - strongest. <b>Wood</b> - medium. <b>Glass</b> - weak.</li>
+      <li><b>Ramps</b> - slopes. Units on them roll, just like in Angry Birds.</li>
+      <li><b>Cloud</b> - floats. Blocks touching its underside, and blocks touching those, hang in the air. Knock pieces loose and whatever loses its link to the cloud falls.</li>
+      <li><b>Rope</b> - hang it under a block or stand it on one. Units can climb it and step off onto a higher platform.</li>
+      <li><b>Door</b> - place a <b style="color:#e8b923">gold</b> door on a block, then its <b class="r">red</b> exit door. A unit stepping into the gold door comes out of the red one.</li>
+      <li><b>Arrow</b> - a floating red ball. The block right in front of its point floats and moves that way. An arrow facing back on the same row sends it home again: a moving platform. Tap an arrow to flip it.</li>
+      <li><b>Blue Arrow</b> - the same, but up and down: the block above or below its point becomes a lift.</li>
+    </ul>
+    <h3>2. Place your army</h3>
+    <p>9 Endos (1 heart) and King Freddy (2 hearts), anywhere on your land. Drag a mask from the gold equipment bar onto an Endo to change it - now, or at any moment during the battle. You can even drop a mask onto a fighter that already has one, but the old mask is destroyed - buy a new one from the shop.</p>
+    <p>Stuck for ideas? <b>Auto Fort</b> builds a ready-made fortress; tap it again for a different style (Pyramid, Bunker, Great Hall, Village, Sky Fort). <b>Save Fort</b> keeps the fort you built, and it joins the Auto Fort rotation.</p>
+    <h3>3. Battle - each turn pick ONE:</h3>
+    <ul>
+      <li><b>Fire the cannon</b> - fire it 3 turns in a row and it OVERHEATS: no cannon for the next 2 turns. Your cannon lights up. Drag back anywhere and let go; the camera chases the ball to the enemy side so you see the damage. A direct hit does 3 damage. The ball smashes through glass easily, wood with some effort, and only a couple of stone blocks. Your own cannonballs fly straight through everything that's yours, and every cannonball passes through ropes (but still hits a unit hanging on one).</li>
+      <li><b>Roll the dice</b> - 3 rolls. The dice read 5 to 10, and each roll gives that many points: move a unit 1 square per point (like a chess king: any direction; stepping into mid-air is fine, the unit just falls). A unit can step straight through a wall of its OWN that is one block thick, but never through enemy blocks, or repair with blocks: wood 1, glass 1, stone 2. Glass may also go in the battlefield.</li>
+    </ul>
+    <h3>Fighters</h3>
+    <ul>
+      <li><b>Bonnie</b> - 2 hearts.</li>
+      <li><b>Chica</b> - can spend one dice roll to throw her <b>Cupcake</b>. It lands and becomes its own unit you can move. Once the Cupcake is destroyed, that's it.</li>
+      <li><b>Foxy</b> - moves 2 squares for every dice point, but still only attacks the square right next to him.</li>
+      <li><b>Toy Bonnie</b> - climbs into the cannon: pick him when you fire and HE is the cannonball. He smashes through like one and gets up wherever he lands.</li>
+      <li><b>Balloon Boy</b> - if he reaches the far edge of the enemy's land he wrecks their cannon. A side with no cannon can only use the dice, and gets no final shot.</li>
+      <li><b>Mangle</b> - hangs off the side or underside of any block bigger than one square, like a rope, so she can crawl up walls.</li>
+      <li><b>Withered Chica</b> - breaks enemy wood blocks for free when she's broken into their land.</li>
+      <li><b>Phantom Puppet</b> - slips straight through the enemy's stone walls if they're one block thick (not wood or glass).</li>
+      <li><b>Springtrap</b> - 3 hearts.</li>
+      <li><b>Nightmare Foxy</b> - like King Freddy, can take out enemies who invade your land.</li>
+      <li><b>Toy Bonnie, Bidybab, Electrobab</b> - can be fired from the cannon, or on a dice turn grab one and drag back to launch it across the map (that spends the roll). Bidybab splits into two in mid-air; Electrobab explodes when she hits the enemy's fort.</li>
+      <li><b>Funtime Foxy</b> - breaks enemy glass for free when he's broken into their land.</li>
+      <li><b>Burnt Foxy</b> - spend a roll to shoot a fireball: 1 damage, sets wood on fire, bounces off glass.</li>
+      <li><b>Glamrock Bonnie</b> / <b>OMC Mangle</b> - walk straight through the enemy's one-block WOOD / GLASS walls (Phantom Puppet does it through STONE, <b>Ennard</b> through all three).</li>
+      <li><b>Games Freddy</b> - flies: wherever the dice move him he stays up in the air.</li>
+      <li><b>Missing Mangle</b> - spend a roll: pink ooze turns enemy blocks it splashes into pink plastic (as weak as glass, 1 point to break).</li>
+      <li><b>Cookie Bonnie</b> - spend a roll: a cookie flies dead straight, 1 damage to every enemy it passes, through glass, stopped by wood and stone.</li>
+      <li><b>Radioactive Foxy</b> - spend a roll: radioactive goo melts every enemy block in the splash.</li>
+      <li><b>Chipper</b> - digs: he can step down into the earth and tunnel along under the forts (up to 3 squares deep), then pop up anywhere. Nothing can hit him underground.</li>
+      <li><b>Glamrock Endo</b> - while he's alive, ALL your units can take out enemies who invade your land. Only his death ends it.</li>
+      <li><b>DJ Music Man</b> - spend a roll: he throws a comrade touching him as far as the cannon can, into enemy land to fight (tap DJ Throw, or grab the comrade and drag back).</li>
+      <li><b>Festive Mangle</b> - spend a roll: festive magic goes straight through wood, shoves stone over like foam, bounces off glass and kills every enemy it touches.</li>
+      <li><b>Pitch Black Ennard</b> - spend a roll: teleports onto any free square next to a comrade of your choice.</li>
+      <li><b>Dust Mangle</b> - launch her like Toy Bonnie. Once she lands in the enemy's land they're covered in green dust: while she stays there, their dice rolls are cut in half.</li>
+      <li><b>Festive BB</b> - can't be crushed by falling blocks; only units, cannonballs and shots can take him out.</li>
+      <li><b>King upgrades</b> (drag onto your King): <b>Books Freddy</b> 3 hearts &middot; <b>Black Light Freddy</b> spend a roll to shoot a blue cannonball that smashes through stone and glass but not wood &middot; <b>Dread Bear</b> only a falling block can hurt him, and once a match he gives a unit 3 hearts &middot; <b>Molten Freddy</b> launches himself like Toy Bonnie and walks through any one-block enemy wall &middot; <b>Funtime Freddy</b> wrecks the enemy cannon at the far edge, revives a fallen comrade instead of firing (at full health), and explodes if killed in enemy land &middot; <b>Unidentified Freddy</b> gets one random fighter ability every match.</li>
+      <li><b>Magic</b> (fireball, pink ooze, radioactive goo, festive magic) bounces off glass, and a side can use magic at most 3 times a turn.</li>
+    </ul>
+    <h3>Damage</h3>
+    <ul>
+      <li>Falling glass: 0. Falling wood: 1. Falling stone: 2. Cannonball direct hit: 3.</li>
+      <li>Knocks can send units rolling. Step a unit onto a slope and it slides down.</li>
+    </ul>
+    <h3>Invasions</h3>
+    <p>Units can fight each other in the battlefield by moving onto an enemy - an attack does 1 damage. An invader in enemy land can take out defenders, and the defenders can only run - except their King, who can fight invaders in his own land.</p>
+    <p><b>Breaking in:</b> a unit inside the enemy's land can smash an enemy block next to it with dice points: <b>stone 1</b>, <b>wood 2</b>, <b>glass 3</b>. Or climb over it if it can. (So an all-stone fortress is easy to break into!)</p>
+    <h3>The King</h3>
+    <p>If King Freddy falls, one of his soldiers runs away in fear.</p>
+    <h3>Winning</h3>
+    <p>Wipe out all 9 enemy soldiers. The side that loses its last soldier gets one FINAL SHOT: if it takes out every enemy soldier, the game is a draw.</p>
+    <p>Coins: win 10, draw 5, loss 1. Spend them in the Shop.</p>
+    <h3>Controls</h3>
+    <p>On PC: Esc pauses, R rolls the dice.</p>
+  </div>
+</div>
+
+<!-- QUIT -->
+<div id="quit" class="screen">
+  <h2>THANKS FOR PLAYING</h2>
+  <p>You can close this tab now.</p>
+  <button class="mbtn gray" data-go="menu">BACK TO MENU</button>
+</div>
+
+<!-- IN-GAME HUD -->
+<div id="hud" class="hidden">
+  <div id="hudTop"><button id="hudMenu" class="hbtn">&#9776;</button><div id="banner"></div><div id="status"></div></div>
+  <div id="equip" class="hidden"></div>
+  <div id="equip2" class="hidden"></div>
+  <div id="zoomBtns"><button data-z="in">+</button><button data-z="out">&minus;</button></div>
+  <div id="hudBar"></div>
+  <div id="toast"></div>
+  <div id="bigText"></div>
+  <div id="overlay" class="hidden"></div>
+</div>
+
+<div id="rotate"><div>&#8635;</div>Turn your phone sideways</div>
+<div id="uiToast"></div>
+<img id="dragGhost" class="hidden" alt="">
+
+<script src="lib/matter.min.js"></script>
+<script src="lib/peerjs.min.js"></script>
+<script src="js/store.js"></script>
+<script src="js/sfx.js"></script>
+<script src="js/net.js"></script>
+<script src="js/game.js"></script>
+<script src="js/ui.js"></script>
+</body>
+</html>

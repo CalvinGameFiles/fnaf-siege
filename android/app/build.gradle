@@ -1,0 +1,52 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.calvingamefiles.fnafsiege'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'com.calvingamefiles.fnafsiege'
+        minSdk 24
+        targetSdk 34
+        versionCode Integer.parseInt(System.getenv('VERSION_CODE') ?: '1')
+        versionName System.getenv('VERSION_NAME') ?: 'dev'
+    }
+
+    signingConfigs {
+        // One fixed key, so every new build installs over the old one and keeps the saves.
+        // The key is NOT in the repository: the cloud build writes it from the SIGNING_KEY_B64 secret,
+        // and the password comes from the SIGNING_PASSWORD secret.
+        personal {
+            storeFile file(System.getenv('SIGNING_KEY_FILE') ?: '../fnafsiege.p12')
+            storeType 'pkcs12'
+            storePassword System.getenv('SIGNING_PASSWORD') ?: ''
+            keyAlias 'fnafsiege'
+            keyPassword System.getenv('SIGNING_PASSWORD') ?: ''
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.personal
+        }
+        debug {
+            signingConfig signingConfigs.personal
+        }
+    }
+
+    androidResources {
+        noCompress += ['png', 'webp', 'ogg', 'mp3', 'json']
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    implementation 'androidx.webkit:webkit:1.11.0'
+}

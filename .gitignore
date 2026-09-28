@@ -1,0 +1,17 @@
+debug/shots/
+debug/__pycache__/
+android/app/src/main/assets/
+android/.gradle/
+android/build/
+android/app/build/
+*.apk
+desktop/node_modules/
+desktop/dist/
+desktop/www/
+# the app's signing key stays on this PC (the cloud build gets it from a repository secret)
+android/*.p12
+*.p12
+*.jks
+# scratch pictures and one-off scripts from testing
+debug/grid-*.png
+debug/_*.py
