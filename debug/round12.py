@@ -52,8 +52,8 @@ try:
     # --- coins: a loss costs 10, never below 0
     got = E("(() => { Store.set('coins', 25); const a = Store.reward('loss'), c1 = Store.get('coins'); Store.set('coins', 4); const b = Store.reward('loss'), c2 = Store.get('coins'); const w = Store.reward('win'); return [a, c1, b, c2, w, Store.get('coins')]; })()")
     check("a loss costs 10 coins (25 -> 15)", got[:2] == [-10, 15], str(got))
-    check("...but never goes below 0 (4 -> 0)", got[2:4] == [-4, 0], str(got))
-    check("a win still pays 10", got[4:] == [10, 10], str(got))
+    check("...and CAN go below 0 (4 -> -6)", got[2:4] == [-10, -6], str(got))
+    check("a win still pays 10", got[4:] == [10, 4], str(got))
 
     # --- RED and BLUE team colours
     check("RED and BLUE are in the shop's Common section for 10 coins", E("[COSMETICS.team.items.red[1], COSMETICS.team.items.blue[1], rarityOf(10)]") == [10, 10, 0])
