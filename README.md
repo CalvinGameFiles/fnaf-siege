@@ -26,6 +26,7 @@ One player taps **Play > Local > Host a game**, and the other sees it in the lis
 |---|---|
 | `www/index.html`, `www/css/style.css` | the page and the menus |
 | `www/js/game.js` | the match: building, physics (Matter.js), clouds/ropes/doors/arrows, turns, rules, the campaign CPU and its 50 levels, drawing, input |
+| `www/js/forts.js` | the 50 campaign forts and the map each level is played on |
 | `www/js/ui.js` | main menu, campaign (levels + PLAY), shop, inventory and gold equipment bar (drag and drop), options, local lobby |
 | `www/js/net.js` | local play over PeerJS |
 | `www/js/store.js` | saved options, coins, owned items, equipment bar, beaten levels; `ITEMS` = what the shop sells |
@@ -52,12 +53,12 @@ One player taps **Play > Local > Host a game**, and the other sees it in the lis
 - Chipper digs into the earth and tunnels under the forts (3 squares deep; nothing hits him down there). Glamrock Endo, while alive, lets ALL his side fight invaders at home. DJ Music Man spends a roll to throw a comrade touching him as far as the cannon. Festive Mangle's magic goes through wood, shoves stone over, bounces off glass and kills any enemy it touches. Pitch Black Ennard spends a roll to teleport next to any comrade.
 - Dust Mangle (launch her; while she stands in the enemy's land their dice rolls are halved), Festive BB (can't be crushed by falling blocks).
 - King upgrades (drag onto the King): Books Freddy (3 hearts), Black Light Freddy (spend a roll: a blue cannonball that smashes stone and glass but not wood), Dread Bear (only falling blocks hurt him; once a match gives a unit 3 hearts), Molten Freddy (launches himself, walks through any one-block enemy wall), Funtime Freddy (wrecks the cannon at the far edge; at full health revives a fallen comrade instead of firing; explodes if killed in enemy land), Unidentified Freddy (one random fighter ability each match).
-- The campaign has 50 levels: Endos only on level 1, then 1 mask, 2 of a mask, different masks, more and stronger ones, King upgrades from level 20, and the best line-up on level 50. Every level has its own fort (no two are alike): towers, huts, bunkers, steps, glass houses, stilt houses and cloud islands, getting bigger and stonier level by level. The CPU also fires its shooters' shots, revives with Funtime Freddy and uses Dread Bear's gift.
+- The campaign has 50 levels: Endos only on level 1, then 1 mask, 2 of a mask, different masks, more and stronger ones, King upgrades from level 20, and the best line-up on level 50. Every level has a fort built for its name, none alike and none an Auto Fort (`www/js/forts.js`): a wooden show stage, a pirate ship in Pirate Cove, a supply closet of shelves, a hallway maze, a claw machine in the West Arcade, a bowling lane in Bonnie Bowl, Candy Cadet as a giant robot, a stone keep on The Final Night... getting stonier level by level. The CPU also fires its shooters' shots, revives with Funtime Freddy and uses Dread Bear's gift.
 - Units may step into mid-air (they just fall), and step straight through a one-block wall of their OWN side. Enemy blocks can't be walked through.
 - The dice read 5-10. A unit stepped onto a slope slides down it.
 - Auto Fort styles: Pyramid, Bunker, Great Hall, Village, Sky Fort (tap again to cycle). The campaign CPU aims better (it corrects itself after each shot) and marches raiders at you with the dice.
 - Falling glass does 0, wood 1, stone 2. A cannonball direct hit does 3.
-- Maps: **The Field** (flat) or the **Red Desert** (one side on a raised plateau, with a climbable staircase slope in the battlefield). Pass & Play and Local pick one at random; campaign levels 3, 6 and 9 are in the desert.
+- Maps: **The Field** (flat) or the **Red Desert** (one side on a raised plateau, with a climbable staircase slope in the battlefield). Pass & Play and Local pick one at random; each campaign level has its own map, and from level 15 the Snowy Hill, the Jungle, the Volcano Wasteland and the Towers join the campaign.
 - In battle the camera moves by itself: it shows the side whose turn it is (its army when it rolls), chases each cannonball, then pulls back over the side it lands on so both players see the damage. Your cannon lights up while you aim.
 - Your own cannonballs fly through everything that's yours. Cannonballs pass through ropes but still hit a unit hanging on one.
 - A unit inside the enemy's land can smash an enemy block next to it with dice points: stone 1, wood 2, glass 3.

@@ -516,54 +516,13 @@ const Game = (() => {
     ['mmangle', 'rfoxy', 'electrobab', 'ennard', 'djmm', 'pbennard', 'gendo', 'dmangle', 'fmangle'],
   ];
   const KING_TIERS = [['books', 'molten', 'blfreddy'], ['funtime', 'unknown'], ['dread']];
-  // A level's fort plan: buildings packed left to right across the 25-wide land (in blue's orientation; mirrored for
-  // red). The mix, sizes, heights and gaps come from the level number, so every level's fort is its own - and no
-  // two plans are ever the same (a repeat is simply rolled again).
-  const planSeen = new Set();
-  function levelPlan(n, mover) {
-    for (let tries = 0; ; tries++) {
-      const rnd = mulberry(n * 31337 + 5 + tries * 7777), pk = a => a[Math.floor(rnd() * a.length)];
-      const tall = Math.min(4, 2 + Math.floor(n / 14));            // how many storeys a tower can reach
-      const kinds = [['tower', 3], ['hut', 2], ['steps', 2], ['glass', 1], ['wall', 1]];
-      if (n >= 4) kinds.push(['bunker', 2]);
-      if (n >= 8) kinds.push(['stilt', 1]);
-      if (n >= 10 && !mover) kinds.push(['island', 1]);
-      const bag = kinds.flatMap(([k, w]) => Array(w).fill(k));
-      const W = { tower: 4, hut: 4, bunker: 6, steps: 6, stilt: 4, island: 6, glass: 4, wall: 1 };
-      const plan = [];
-      let x = 0;
-      if (rnd() < 0.6) { plan.push({ m: 'ramp', x, dir: 'R' }); x += 2; }
-      while (true) {
-        let m = pk(bag);
-        if (m === 'wall' && plan.length && plan[plan.length - 1].m === 'wall') m = 'hut';
-        let w = W[m];
-        if (m === 'steps' && rnd() < 0.4) w = 8;
-        if (x + w > 25) {                               // fill the rest with something narrower, or a ramp at the back
-          if (25 - x >= 4) { m = pk(['hut', 'glass', 'tower']); w = 4; }
-          else { if (25 - x >= 2) plan.push({ m: 'ramp', x, dir: 'L' }); break; }
-        }
-        const md = { m, x, w };
-        if (m === 'tower') { md.h = 1 + Math.floor(rnd() * tall) + (n > 20 ? 1 : 0); md.h = Math.min(md.h, 4); md.roof = pk(['peak', 'crown']); }
-        if (m === 'stilt') md.h = pk([8, 12]);
-        if (m === 'island') md.y = 10 + Math.floor(rnd() * 8);
-        plan.push(md);
-        x += w + (rnd() < 0.35 ? 1 : 0);
-        if (x >= 25) break;
-      }
-      const sig = JSON.stringify(plan);
-      if (planSeen.has(sig) && tries < 50) continue;
-      planSeen.add(sig);
-      return plan;
-    }
-  }
   const LEVELS = LEVEL_NAMES.map((name, i) => {
     const n = i + 1, rnd = mulberry(n * 104729 + 7), pk = a => a[Math.floor(rnd() * a.length)];
     const t = i / 49;
-    const L = { name, style: 'plan', stone: Math.round((0.1 + 0.7 * t) * 100) / 100, noise: Math.round((0.13 - 0.1 * t) * 1000) / 1000 };
-    L.mover = n >= 7 && n % 7 === 0;
-    if (n % 3 === 0 && !L.mover) { L.map = 'desert'; L.high = n % 2 ? 'red' : 'blue'; }
-    L.plan = levelPlan(n, L.mover);
-    L.cloud = L.plan.some(m => m.m === 'island');
+    // the fort, and the map it stands on, are the level's own (forts.js)
+    const L = { name, style: 'level', fort: i, stone: Math.round((0.1 + 0.7 * t) * 100) / 100, noise: Math.round((0.13 - 0.1 * t) * 1000) / 1000 };
+    if (LEVEL_FORTS[i].map !== 'field') L.map = LEVEL_FORTS[i].map;
+    if (LEVEL_FORTS[i].high) L.high = LEVEL_FORTS[i].high;
     // how many masks: 0 on level 1, then one more every 5 levels (9 = every soldier)
     const count = n === 1 ? 0 : Math.min(9, 1 + Math.floor((n - 2) / 5));
     const pool = MASK_TIERS[0].concat(n >= 15 ? MASK_TIERS[1] : [], n >= 28 ? MASK_TIERS[2] : []);
@@ -880,7 +839,7 @@ const Game = (() => {
       let cc = c, s = shape;
       if (side === 'red') { cc = COLS - c - sh.w; s = MIRROR[shape] || shape; }
       const it = { id: nextId++, shape: s, mat, c: cc, r, ...extra };
-      if (side === 'red' && it.dir) it.dir = -it.dir;
+      if (side === 'red' && it.dir && mat === 'arrow') it.dir = -it.dir;
       const cells = itemCells(it);
       if (cells.some(([x, y]) => occ.has(key(x, y)) || zoneOf(x) !== side || y < 0 || y >= groundRow(x) || mapSolid(x, y) || mapRope(x, y)
         || (MAPK === 'towers' && !onPlate(x, side)))) return null;
@@ -888,7 +847,7 @@ const Game = (() => {
       L.blocks.push(it); return it;
     };
     let style = o.style || 'pyramid';
-    if (MAPK === 'towers' && !TOWER_STYLES.includes(style)) style = TOWER_STYLES[FORT_STYLES.indexOf(style) % 2 === 1 ? 1 : 0];
+    if (MAPK === 'towers' && style !== 'level' && !TOWER_STYLES.includes(style)) style = TOWER_STYLES[FORT_STYLES.indexOf(style) % 2 === 1 ? 1 : 0];
     const stone = o.stone != null ? o.stone : 0.35;
     const mat = () => (rnd() < stone ? 'stone' : 'wood');
     const F = landFloor(side);                       // the side's ground row (the desert plateau is higher)
@@ -983,62 +942,26 @@ const Game = (() => {
       }
       put('r6', 'rope', 8, F - 6);
       kingSpot = [3, F - 21];
-    } else if (style === 'plan') {                  // a campaign level's own fort: its buildings one by one
-      let best = null;                              // the King goes in the safest spot: a bunker, else a tower's bottom room
-      for (const md of o.plan || []) {
-        const { x } = md;
-        if (md.m === 'tower') {
-          let fl = F;
-          for (let k = 0; k < md.h; k++) {
-            const sp = room(x, fl, k === 0 && stone > 0.2 ? 'stone' : mat(), k === md.h - 1 ? 'stone' : pk(['stone', 'wood', 'wood']));
-            spots.push(...sp); if (k === 0 && !best) best = sp[0];
-            fl -= 4;
-          }
-          if (md.roof === 'peak') { put('rr1', 'wood', x, fl - 1); put('rl1', 'wood', x + 3, fl - 1); }
-          else { put('s11', 'stone', x, fl - 1); put('s11', 'stone', x + 3, fl - 1); spots.push([x + 1, fl - 1]); }
-        } else if (md.m === 'hut') {
-          spots.push(...room(x, F, mat(), pk(['wood', 'stone'])));
-          put('rr2', 'wood', x, F - 6); put('rl2', 'wood', x + 2, F - 6);
-        } else if (md.m === 'glass') {
-          spots.push(...room(x, F, 'glass', pk(['wood', 'stone'])));
-        } else if (md.m === 'wall') {
-          put('s14', 'stone', x, F - 4); put('s14', 'stone', x, F - 8);
-        } else if (md.m === 'bunker') {
-          for (const wx of [x, x + 5]) { put('s14', 'stone', wx, F - 4); put('s14', 'stone', wx, F - 8); }
-          const lo = room(x + 1, F, mat(), 'stone'), hi = room(x + 1, F - 4, mat(), 'stone');
-          spots.push(...lo, ...hi);
-          put('s11', 'stone', x, F - 9); put('s11', 'stone', x + 5, F - 9);
-          best = lo[0];
-        } else if (md.m === 'steps') {
-          const blocks = md.w === 8 ? [[0, 0], [2, 0], [4, 0], [6, 0], [2, 1], [4, 1], [3, 2]] : [[0, 0], [2, 0], [4, 0], [2, 1]];
-          for (const [dx, lv] of blocks) put('s22', lv === 0 ? 'stone' : mat(), x + dx, F - 2 - lv * 2);
-          spots.push([x, F - 3], [x + 1, F - 3], [x + md.w - 2, F - 3], [x + md.w - 1, F - 3]);
-          if (md.w === 8) spots.push([x + 3, F - 7], [x + 4, F - 7]); else spots.push([x + 2, F - 5], [x + 3, F - 5]);
-        } else if (md.m === 'stilt') {
-          for (let k = 4; k <= md.h; k += 4) { put('s14', mat(), x, F - k); put('s14', mat(), x + 3, F - k); }
-          const p = F - md.h - 1;
-          put('s41', 'wood', x, p);
-          put('s12', 'wood', x, p - 2); put('s12', 'wood', x + 3, p - 2); put('s41', pk(['wood', 'stone']), x, p - 3);
-          put('rr1', 'wood', x, p - 4); put('rl1', 'wood', x + 3, p - 4);
-          put('r6', 'rope', x + 1, p + 1);
-          spots.push([x + 1, p - 1], [x + 2, p - 1]);
-        } else if (md.m === 'island') {
-          const y = F - md.y;
-          put('c62', 'cloud', x, y);
-          put('s12', 'stone', x + 1, y - 2); put('s12', 'stone', x + 4, y - 2); put('s41', pk(['wood', 'stone']), x + 1, y - 3);
-          put('r6', 'rope', x + 5, y + 2);
-          spots.push([x + 2, y - 1], [x + 3, y - 1], [x, y - 1]);
-        } else if (md.m === 'ramp') {
-          put(md.dir === 'R' ? 'rr2' : 'rl2', 'stone', x, F - 2);
-        }
-      }
-      if (o.mover) {                                // a moving platform high above, between two arrows
-        const mr = F - 25;
-        put('a1', 'arrow', 0, mr, { dir: 1 }); put('s31', 'stone', 1, mr); put('a1', 'arrow', 13, mr, { dir: -1 });
-        spots.unshift([2, mr - 1]);
-      }
-      kingSpot = best && spots.includes(best) ? best : spots[Math.floor(spots.length / 2)];
-      spots = spots.filter(s => s !== kingSpot);
+    } else if (style === 'level') {                // a campaign level's own fort, designed for its name (forts.js)
+      const each = m => (typeof m === 'function' ? m : () => m);
+      const col = (x, base, h, m) => { for (let r = base; h > 0;) { const k = Math.min(4, h); put('s1' + k, each(m)(), x, r - k); r -= k; h -= k; } };
+      const beam = (x, r, w, m) => { while (w > 0) { const k = Math.min(4, w); put('s' + k + '1', each(m)(), x, r); x += k; w -= k; } };
+      const fill = (x, base, w, h, m) => { for (let i = 0; i < h; i++) beam(x, base - 1 - i, w, m); };
+      const rope = (x, r, n) => { while (n >= 2) { const k = n >= 6 ? 6 : n === 5 ? 3 : Math.min(4, n); put('r' + k, 'rope', x, r); r += k; n -= k; } };
+      const door = (x1, r1, x2, r2) => {
+        const a = put('d1', 'door', x1, r1, { color: 'gold' }), b = a && put('d1', 'door', x2, r2, { color: 'red', link: a.id });
+        if (b) a.link = b.id; else if (a) L.blocks.splice(L.blocks.indexOf(a), 1);
+      };
+      // a lift: a blue arrow under a block sends it up; a downward blue arrow at row `top` turns it back
+      const lift = (x, r, shape, m, top) => { put('v1', 'varrow', x, r, { dir: -1 }); put(shape, m, x, r - SHAPES[shape].h); if (top != null) put('v1', 'varrow', x, top, { dir: 1 }); };
+      LEVEL_FORTS[o.fort].b({ put, col, beam, fill, rope, door, lift, F, m: mat, pk, rnd,
+        S: (...ps) => spots.push(...ps), K: (x, r) => { kingSpot = [x, r]; } });
+      const taken = new Set();                      // no two units on one square, and none inside a block
+      spots = spots.filter(([c, r]) => {
+        const k = key(c, r);
+        if (taken.has(k) || occ.has(key(real(c), r)) || (kingSpot && kingSpot[0] === c && kingSpot[1] === r)) return false;
+        taken.add(k); return true;
+      });
     } else if (style === 'keep') {                  // the Towers: a stepped keep that fits the 15-wide base (columns 5-19)
       [[5, 9, 13], [7, 11], [9]].forEach((xs, lv) => xs.forEach(x => spots.push(...room(x, F - lv * 4, lv === 0 ? 'stone' : mat(), lv === 2 ? 'stone' : pk(['stone', 'wood'])))));
       put('rr1', 'wood', 9, F - 13); put('rl1', 'wood', 12, F - 13);

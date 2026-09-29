@@ -20,18 +20,18 @@ try:
     cdp.send("Emulation.setDeviceMetricsOverride", {"width": 915, "height": 412, "deviceScaleFactor": 2, "mobile": True})
     cdp.send("Page.navigate", {"url": f"http://127.0.0.1:{port}/"}); cdp.pump(1.5)
 
-    # --- 50 different forts: every level's plan, and the fort actually built from it, is its own
-    plans = E("Game.LEVELS.map(L => JSON.stringify(L.plan))")
-    check("all 50 levels have a fort plan", len(plans) == 50 and all(p and p != "null" for p in plans))
-    check("...and no two plans are the same", len(set(plans)) == 50, f"{len(set(plans))} different")
+    # --- 50 different forts: every level has its own designed fort (forts.js), and the fort actually built is its own
+    forts = E("Game.LEVELS.map(L => L.style + ':' + L.fort)")
+    check("all 50 levels have their own designed fort", forts == [f"level:{i}" for i in range(50)], str(forts[:3]))
+    maps = E("Game.LEVELS.map(L => L.map || 'field')")
+    check("levels 1-14 are on the Field / Red Desert", all(m in ("field", "desert") for m in maps[:14]), str(maps[:14]))
+    check("from level 15 the Snowy Hill, Jungle, Volcano Wasteland and Towers join the campaign",
+          all(any(m == k for m in maps[14:]) for k in ("snow", "jungle", "wasteland", "towers")), str(sorted(set(maps))))
     sigs = []
     for lv in range(50):
         E(f"document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active')); Game.running && Game.stop(); Game.start({{mode:'campaign', level:{lv}}}); document.getElementById('overlay').classList.add('hidden')")
         sigs.append(E(f"JSON.stringify({D}.S.layouts.red.blocks.map(b=>[b.shape,b.mat,b.c,b.r]).sort())"))
     check("the 50 forts that get built are all different", len(set(sigs)) == 50, f"{len(set(sigs))} different")
-    kinds = E("Game.LEVELS.map(L => [...new Set(L.plan.map(m => m.m))].sort().join('+'))")
-    check("they use a mix of buildings (towers, huts, bunkers, steps, stilts, islands, glass houses, walls)",
-          all(any(k in x for x in kinds) for k in ["tower", "hut", "bunker", "steps", "stilt", "island", "glass", "wall"]), str(sorted(set(kinds))[:6]))
     for lv in (0, 14, 29, 49):
         E(f"document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active')); Game.running && Game.stop(); Game.start({{mode:'campaign', level:{lv}}}); document.getElementById('overlay').classList.add('hidden')")
         E(f"{D}.S.layouts.blue = {D}.genFort('blue'); {D}.readyUp('blue'); document.getElementById('overlay').classList.add('hidden')"); cdp.pump(1.0)

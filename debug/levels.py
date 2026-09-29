@@ -1,8 +1,10 @@
-"""Every campaign level builds a valid CPU fort (10 units, extras present) that stands still. python debug/levels.py"""
+"""Every campaign level builds its own CPU fort (10 units, King, nothing inside a block, all 50 different) that stands still;
+screenshots of each fort go to debug/shots/forts/. python debug/levels.py"""
 import os, sys, time, subprocess, socket, base64
 sys.path.insert(0, r"C:\Users\JesusFam\slayerfiles-debug"); import harness
 HERE = os.path.dirname(os.path.abspath(__file__)); ROOT = os.path.dirname(HERE)
-fails = []
+fails = []; sigs = []
+FORTS = os.path.join(HERE, "shots", "forts"); os.makedirs(FORTS, exist_ok=True)
 def check(n, ok, x=""):
     print(("PASS " if ok else "FAIL ") + n + (f"  ({x})" if x else "")); ok or fails.append(n)
 s = socket.socket(); s.bind(("127.0.0.1", 0)); port = s.getsockname()[1]; s.close()
@@ -13,17 +15,19 @@ try:
     cdp.send("Page.navigate", {"url": f"http://127.0.0.1:{port}/"}); cdp.pump(1.5)
     for lv in range(E("Game.LEVELS.length")):
         E(f"document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active')); Game.running && Game.stop(); Game.start({{mode:'campaign', level:{lv}}}); document.getElementById('overlay').classList.add('hidden')")
-        info = E(f"(() => {{ const L={D}.S.layouts.red; return [L.units.length, L.units.filter(u=>u.kind==='king').length, L.blocks.filter(b=>b.mat==='cloud').length, L.blocks.filter(b=>b.mat==='arrow').length, L.units.map(u=>u.kind).filter(k=>k!=='endo'&&k!=='king').join('+')]; }})()")
+        info = E(f"(() => {{ const L={D}.S.layouts.red; return [L.units.length, L.units.filter(u=>u.kind==='king').length, L.blocks.length, L.blocks.filter(b=>b.mat==='varrow').length, L.units.map(u=>u.kind).filter(k=>k!=='endo'&&k!=='king').join('+')]; }})()")
         lvl = E(f"Game.LEVELS[{lv}]")
-        ok = info[0] == 10 and info[1] == 1 and (info[2] > 0) == bool(lvl.get("cloud")) and (info[3] == 2) == bool(lvl.get("mover"))
+        sigs.append(E(f"JSON.stringify({D}.S.layouts.red.blocks.map(b=>[b.shape,b.c,b.r]).sort())"))
+        ok = info[0] == 10 and info[1] == 1 and info[2] >= 8
         E(f"{D}.S.layouts.blue = {D}.genFort('blue'); {D}.readyUp('blue'); document.getElementById('overlay').classList.add('hidden')")
         b0 = E(f"{D}.blocks.filter(b=>!b.gm.mover).map(b=>[b.position.x,b.position.y])"); cdp.pump(3)
         b1 = E(f"{D}.blocks.filter(b=>!b.gm.mover).map(b=>[b.position.x,b.position.y])")
         moved = sum(1 for p, q in zip(b0, b1) if abs(p[0]-q[0]) + abs(p[1]-q[1]) > 8)
         alive = E(f"{D}.units.filter(u=>u.gm.side==='red').length")
-        riders = E(f"{D}.units.filter(u=>u.gm.side==='red'&&u.position.y<1060&&u.position.y>900).length") if lvl.get('mover') else 1
-        ok = ok and riders >= 1
-        check(f"level {lv+1} {lvl['name']}: units {info[0]}, clouds {info[2]}, arrows {info[3]}, fighters [{info[4]}]", ok and moved == 0 and alive == 10 and len(b0) == len(b1), f"moved {moved}, red alive {alive}")
+        E(f"(() => {{ const d={D}; const y=(d.S.map==='towers'?49:d.GROUND[74])*40-11*40; d.cam.t={{cx:62*40, cy:y, z:0.42}}; d.cam.cx=62*40; d.cam.cy=y; d.cam.z=0.42; }})()"); cdp.pump(0.3)
+        r = cdp.send("Page.captureScreenshot", {"format": "png"}); open(os.path.join(FORTS, f"{lv+1:02d}.png"), "wb").write(base64.b64decode(r["result"]["data"]))
+        check(f"level {lv+1} {lvl['name']} ({lvl.get('map', 'field')}): units {info[0]}, blocks {info[2]}, lifts {info[3]}, fighters [{info[4]}]", ok and moved == 0 and alive == 10 and len(b0) == len(b1), f"moved {moved}, red alive {alive}")
+    check("all 50 forts are different", len(set(sigs)) == len(sigs), f"{len(set(sigs))} different")
     E(f"(() => {{ const d={D}; d.cam.t={{cx:62*40, cy:34*40, z:0.4}}; d.cam.cx=62*40; d.cam.cy=34*40; d.cam.z=0.4; }})()"); cdp.pump(0.3)
     r = cdp.send("Page.captureScreenshot", {"format": "png"}); open(os.path.join(HERE, "shots", "50-level10-fort.png"), "wb").write(base64.b64decode(r["result"]["data"]))
     # every Auto Fort style, on both maps, stands still with all 20 units alive
