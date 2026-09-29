@@ -4,7 +4,7 @@ A Five Nights at Freddy's strategy game in the style of Angry Birds. Build a for
 
 ## Play it
 - **In your browser (phone or PC):** https://calvingamefiles.github.io/fnaf-siege/ - hold your phone sideways; on a phone it goes full screen on the first tap.
-- **Android app:** open the [Releases](https://github.com/CalvinGameFiles/fnaf-siege/releases) page on your phone, download the newest `FNAF-Siege-....apk` and open it to install (allow "install unknown apps" for your browser when Android asks).
+- **Android app:** open the [Releases](https://github.com/CalvinGameFiles/fnaf-siege/releases) page on your phone, download the newest `FNAF-Siege-....apk` and open it to install (allow "install unknown apps" for your browser when Android asks). From v0.5.2 on, the app shows an **UPDATE** button on the main menu when a newer version is out: tap it, open the download and tap **Update** (never uninstall first - installing over the old app keeps your coins, items and levels).
 
 ## Play on this PC
 Double-click **FNAF Siege** on the desktop. It's a real Windows app (Electron) in `desktop/`: its own window and icon, and F11 for full screen.
@@ -52,7 +52,7 @@ One player taps **Play > Local > Host a game**, and the other sees it in the lis
 - Chipper digs into the earth and tunnels under the forts (3 squares deep; nothing hits him down there). Glamrock Endo, while alive, lets ALL his side fight invaders at home. DJ Music Man spends a roll to throw a comrade touching him as far as the cannon. Festive Mangle's magic goes through wood, shoves stone over, bounces off glass and kills any enemy it touches. Pitch Black Ennard spends a roll to teleport next to any comrade.
 - Dust Mangle (launch her; while she stands in the enemy's land their dice rolls are halved), Festive BB (can't be crushed by falling blocks).
 - King upgrades (drag onto the King): Books Freddy (3 hearts), Black Light Freddy (spend a roll: a blue cannonball that smashes stone and glass but not wood), Dread Bear (only falling blocks hurt him; once a match gives a unit 3 hearts), Molten Freddy (launches himself, walks through any one-block enemy wall), Funtime Freddy (wrecks the cannon at the far edge; at full health revives a fallen comrade instead of firing; explodes if killed in enemy land), Unidentified Freddy (one random fighter ability each match).
-- The campaign has 50 levels: Endos only on level 1, then 1 mask, 2 of a mask, different masks, more and stronger ones, King upgrades from level 20, and the best line-up on level 50. The CPU also fires its shooters' shots, revives with Funtime Freddy and uses Dread Bear's gift.
+- The campaign has 50 levels: Endos only on level 1, then 1 mask, 2 of a mask, different masks, more and stronger ones, King upgrades from level 20, and the best line-up on level 50. Every level has its own fort (no two are alike): towers, huts, bunkers, steps, glass houses, stilt houses and cloud islands, getting bigger and stonier level by level. The CPU also fires its shooters' shots, revives with Funtime Freddy and uses Dread Bear's gift.
 - Units may step into mid-air (they just fall), and step straight through a one-block wall of their OWN side. Enemy blocks can't be walked through.
 - The dice read 5-10. A unit stepped onto a slope slides down it.
 - Auto Fort styles: Pyramid, Bunker, Great Hall, Village, Sky Fort (tap again to cycle). The campaign CPU aims better (it corrects itself after each shot) and marches raiders at you with the dice.

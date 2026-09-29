@@ -2,6 +2,8 @@ package com.calvingamefiles.fnafsiege;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
+import android.content.Intent;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.view.View;
@@ -26,6 +28,23 @@ public class MainActivity extends Activity {
     public class AppBridge {
         @JavascriptInterface
         public void quit() { runOnUiThread(() -> finishAndRemoveTask()); }
+
+        /** The installed version (the release tag, e.g. "v0.5.2"), so the game can tell when a newer one is out. */
+        @JavascriptInterface
+        public String version() {
+            try { return getPackageManager().getPackageInfo(getPackageName(), 0).versionName; }
+            catch (Exception e) { return ""; }
+        }
+
+        /** Opens a link outside the app: the UPDATE button downloads the new APK in the browser. Installing it over
+         *  this app keeps every save, because each version is signed with the same key. */
+        @JavascriptInterface
+        public void openUrl(String url) {
+            if (url == null || !url.startsWith("https://github.com/CalvinGameFiles/fnaf-siege/")) return;
+            runOnUiThread(() -> {
+                try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url))); } catch (Exception ignored) { }
+            });
+        }
     }
 
     @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})

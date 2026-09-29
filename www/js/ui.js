@@ -317,8 +317,30 @@
       document.addEventListener('pointerup', goFull, { once: true });
     }
   }
+  // The phone app: look on GitHub for a newer version and offer an UPDATE button. It downloads the new APK; installing
+  // it over this one (no uninstalling) keeps every coin, item and level, because each version is signed with the same key.
+  // (The web version is always the newest, and the PC app plays straight from the game folder.)
+  async function checkUpdate() {
+    if (!window.AndroidApp || !AndroidApp.version || !AndroidApp.openUrl) return;
+    const cur = AndroidApp.version();
+    try {
+      const r = await fetch('https://api.github.com/repos/CalvinGameFiles/fnaf-siege/releases/latest', { cache: 'no-store' });
+      const rel = await r.json();
+      const apk = (rel.assets || []).find(a => /\.apk$/i.test(a.name));
+      if (!apk || !rel.tag_name || rel.tag_name === cur) return;
+      const b = $('updateBtn');
+      b.innerHTML = `&#11014; UPDATE TO ${rel.tag_name}`;
+      b.classList.remove('hidden');
+      b.onclick = () => {
+        Sfx.play('click');
+        AndroidApp.openUrl(apk.browser_download_url);
+        toast("Downloading the update... open it and tap UPDATE (don't uninstall) - your coins and levels stay");
+      };
+    } catch (e) {}
+  }
   Game.init();
   show('menu');
+  checkUpdate();
   // the app was closed in the middle of a match: that's leaving it, so it's a loss
   if (Store.get('activeMatch')) {
     Store.reward('loss'); Store.set('activeMatch', false);
